@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($env:PYTHONPATH = \"E:\\\\trading\\\\tradingBot\"; & E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\ADMINI~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\E--trading-tradingBot\\\\4430fe6b-01f9-46fd-ae8a-ea91f54e5108\\\\scratchpad\\\\smoke.py\")",
+      "PowerShell(& E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe -m compileall -q E:\\\\trading\\\\tradingBot\\\\main.py E:\\\\trading\\\\tradingBot\\\\config.py E:\\\\trading\\\\tradingBot\\\\strategy.py E:\\\\trading\\\\tradingBot\\\\mt5_connector.py E:\\\\trading\\\\tradingBot\\\\test_conn.py E:\\\\trading\\\\tradingBot\\\\tests; if \\($?\\) { \"compile OK\" })",
+      "PowerShell($env:PYTHONPATH = \"E:\\\\trading\\\\tradingBot\"; & E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\ADMINI~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\E--trading-tradingBot\\\\4430fe6b-01f9-46fd-ae8a-ea91f54e5108\\\\scratchpad\\\\backtest.py\")",
+      "PowerShell(& E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\ADMINI~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\E--trading-tradingBot\\\\4430fe6b-01f9-46fd-ae8a-ea91f54e5108\\\\scratchpad\\\\inspect_result.py\")",
+      "PowerShell($env:PYTHONPATH = \"E:\\\\trading\\\\tradingBot\"; & E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe -m unittest discover -s E:\\\\trading\\\\tradingBot\\\\tests -t E:\\\\trading\\\\tradingBot 2>&1 | Select-Object -Last 4)",
+      "PowerShell($env:PYTHONPATH = \"E:\\\\trading\\\\tradingBot\"; & E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\ADMINI~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\E--trading-tradingBot\\\\4430fe6b-01f9-46fd-ae8a-ea91f54e5108\\\\scratchpad\\\\backtest.py\" --invert 2>&1 | Select-Object -Last 35)",
+      "PowerShell(& E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe E:\\\\trading\\\\tradingBot\\\\reports\\\\engine.py --rrr 3.0 2>&1 | Select-Object -Last 32)",
+      "PowerShell(& E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe E:\\\\trading\\\\tradingBot\\\\reports\\\\engine.py --sweep)",
+      "PowerShell($env:PYTHONPATH = \"E:\\\\trading\\\\tradingBot\"; & E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe -m unittest discover -s E:\\\\trading\\\\tradingBot\\\\tests -t E:\\\\trading\\\\tradingBot 2>&1 | Select-Object -Last 6)",
+      "Artifact",
+      "PowerShell(Remove-Item *)",
+      "PowerShell($env:PYTHONPATH = \"E:\\\\trading\\\\tradingBot\"; & E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe -m unittest discover -s E:\\\\trading\\\\tradingBot\\\\tests -t E:\\\\trading\\\\tradingBot 2>&1 | Select-Object -Last 3; & E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe E:\\\\trading\\\\tradingBot\\\\reports\\\\build_report.py; & E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe -c \"import sys; sys.path.insert\\(0,'E:/trading/tradingBot'\\); import config,strategy,mt5_connector,main; print\\('imports OK | RRR',config.RRR,'| INVERT',config.INVERT_SIGNALS,'| STOP',config.STOP_MODE\\)\")"
+    ]
+  }
+}

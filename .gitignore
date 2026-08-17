@@ -1,0 +1,22 @@
+# Secrets
+.env
+
+# Virtual environments
+env/
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# IDEs
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Backtest history cache (re-pull with: python reports/engine.py --refresh)
+reports/_history.pkl

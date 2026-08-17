@@ -1,0 +1,308 @@
+<title>SMC Backtest Ledger</title>
+<style>
+:root {
+  color-scheme: light;
+  --plane:#eaeff4; --surface:#fbfcfd; --ink:#0e161e; --ink-2:#4c5a67; --muted:#7c8a97;
+  --grid:#dde4ea; --rule:#d2dbe3; --ring:rgba(14,22,30,.10);
+  --up:#2a78d6; --dn:#d03b3b;
+  --up-soft:rgba(42,120,214,.13); --dn-soft:rgba(208,59,59,.13);
+  --row-w:rgba(42,120,214,.05); --row-l:rgba(208,59,59,.045);
+  --hi:rgba(42,120,214,.08);
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --plane:#0b1015; --surface:#151c23; --ink:#eef4f9; --ink-2:#a9b6c2; --muted:#7c8a97;
+    --grid:#222d37; --rule:#2a3641; --ring:rgba(255,255,255,.10);
+    --up:#3987e5; --dn:#e05a5a;
+    --up-soft:rgba(57,135,229,.16); --dn-soft:rgba(224,90,90,.16);
+    --row-w:rgba(57,135,229,.07); --row-l:rgba(224,90,90,.06);
+    --hi:rgba(57,135,229,.10);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane:#0b1015; --surface:#151c23; --ink:#eef4f9; --ink-2:#a9b6c2; --muted:#7c8a97;
+  --grid:#222d37; --rule:#2a3641; --ring:rgba(255,255,255,.10);
+  --up:#3987e5; --dn:#e05a5a;
+  --up-soft:rgba(57,135,229,.16); --dn-soft:rgba(224,90,90,.16);
+  --row-w:rgba(57,135,229,.07); --row-l:rgba(224,90,90,.06);
+  --hi:rgba(57,135,229,.10);
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--plane); color:var(--ink); font-family:var(--sans);
+  font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased; }
+.wrap { max-width:1120px; margin:0 auto; padding:46px 22px 76px;
+  display:flex; flex-direction:column; gap:34px; }
+.eyebrow { font-family:var(--mono); font-size:11px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--muted); }
+header { display:flex; flex-direction:column; gap:16px; }
+h1 { font-size:clamp(27px,4vw,39px); line-height:1.1; margin:0;
+  letter-spacing:-.022em; font-weight:680; text-wrap:balance; }
+.lede { margin:0; max-width:66ch; color:var(--ink-2); font-size:16px; }
+.duo { display:grid; gap:1px; background:var(--rule); border:1px solid var(--rule);
+  border-radius:3px; overflow:hidden;
+  grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
+.pane { background:var(--surface); padding:22px 24px;
+  display:flex; flex-direction:column; gap:3px; }
+.k-lab { font-family:var(--mono); font-size:10.5px; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--muted); }
+.fig { font-family:var(--mono); font-size:clamp(28px,4.4vw,42px); line-height:1.05;
+  letter-spacing:-.03em; font-weight:600; font-variant-numeric:tabular-nums; }
+.fig.up { color:var(--up); } .fig.dn { color:var(--dn); }
+.pane .note { font-size:13px; color:var(--ink-2); }
+section { display:flex; flex-direction:column; gap:13px; }
+h2 { font-size:19px; margin:0; font-weight:640; letter-spacing:-.012em; }
+h3.run { font-family:var(--mono); font-size:11px; letter-spacing:.13em; margin:0;
+  text-transform:uppercase; color:var(--muted); font-weight:500; }
+.sub { margin:0; color:var(--ink-2); font-size:14px; max-width:72ch; }
+.card { background:var(--surface); border:1px solid var(--ring); border-radius:3px;
+  padding:16px 18px 10px; position:relative; }
+.scroll { overflow-x:auto; }
+.scroll svg { display:block; width:100%; min-width:640px; height:auto; }
+.stack { display:flex; flex-direction:column; gap:9px; }
+.grid { stroke:var(--grid); stroke-width:1; }
+.baseline { stroke:var(--rule); stroke-width:1.5; stroke-dasharray:4 4; }
+.tick { fill:var(--muted); font-family:var(--mono); font-size:11px; }
+.vlab { fill:var(--ink-2); font-family:var(--mono); font-size:11px;
+  font-variant-numeric:tabular-nums; }
+.line { fill:none; stroke:var(--ink); stroke-width:2; stroke-linejoin:round; }
+.fill-up { fill:var(--up-soft); } .fill-dn { fill:var(--dn-soft); }
+.pt { fill:var(--surface); stroke:var(--ink); stroke-width:1.4; }
+.end-up { fill:var(--up); stroke:var(--surface); stroke-width:2; }
+.cross { stroke:var(--muted); stroke-width:1; stroke-dasharray:3 3;
+  pointer-events:none; transition:opacity .12s; }
+.hit { fill:transparent; cursor:crosshair; }
+.bar { stroke:var(--surface); stroke-width:2; cursor:pointer; }
+.bar.up { fill:var(--up); } .bar.dn { fill:var(--dn); }
+.bar:hover { opacity:.72; }
+.tip { position:absolute; pointer-events:none; opacity:0; transform:translate(-50%,-100%);
+  background:var(--ink); color:var(--plane); font-family:var(--mono); font-size:11.5px;
+  line-height:1.5; padding:7px 10px; border-radius:3px; white-space:nowrap;
+  transition:opacity .1s; z-index:5; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+thead th { font-family:var(--mono); font-size:10px; letter-spacing:.11em;
+  text-transform:uppercase; color:var(--muted); font-weight:500; text-align:right;
+  padding:0 10px 9px; border-bottom:1px solid var(--rule); white-space:nowrap; }
+thead th:first-child { text-align:left; }
+table.led thead th:nth-child(-n+4) { text-align:left; }
+tbody td { padding:7px 10px; border-bottom:1px solid var(--grid); white-space:nowrap; }
+tbody tr.w { background:var(--row-w); } tbody tr.l { background:var(--row-l); }
+tbody tr.hi { background:var(--hi); }
+td.num, td.n { text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums; }
+td.n { color:var(--muted); font-size:12px; }
+td.d { font-family:var(--mono); font-size:11.5px; color:var(--ink-2); }
+td.muted { color:var(--muted); } td.bal { font-weight:600; }
+td.sign.up { color:var(--up); } td.sign.dn { color:var(--dn); }
+th[scope=row] { text-align:left; font-family:var(--sans); font-size:13.5px;
+  text-transform:none; letter-spacing:0; color:var(--ink); font-weight:500;
+  padding:7px 10px; border-bottom:1px solid var(--grid); white-space:nowrap; }
+.dir { font-family:var(--mono); font-size:10.5px; letter-spacing:.07em;
+  padding:2px 6px; border-radius:2px; border:1px solid var(--ring); }
+.dir.buy { color:var(--up); } .dir.sell { color:var(--dn); }
+.tag { font-family:var(--mono); font-size:10.5px; letter-spacing:.07em;
+  padding:2px 6px; border-radius:2px; font-weight:600; }
+.tag.tp { color:var(--up); background:var(--up-soft); }
+.tag.sl { color:var(--dn); background:var(--dn-soft); }
+.verdicts { display:grid; gap:1px; background:var(--rule); border:1px solid var(--rule);
+  border-radius:3px; overflow:hidden;
+  grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); }
+.v-card { background:var(--surface); padding:16px 18px;
+  display:flex; flex-direction:column; gap:6px; }
+.v-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.v-card h3 { margin:0; font-size:14px; font-weight:640; }
+.v-card p { margin:0; font-size:13px; color:var(--ink-2); }
+.v-claim { font-style:italic; }
+.pill { font-family:var(--mono); font-size:9.5px; letter-spacing:.1em;
+  text-transform:uppercase; padding:2px 7px; border-radius:2px; font-weight:600;
+  white-space:nowrap; }
+.pill.kept { color:var(--up); background:var(--up-soft); }
+.pill.killed { color:var(--dn); background:var(--dn-soft); }
+.flag { background:var(--surface); border:1px solid var(--ring);
+  border-left:3px solid var(--dn); border-radius:3px; padding:18px 22px;
+  display:flex; flex-direction:column; gap:8px; }
+.flag h2 { font-size:17px; }
+.flag p { margin:0; font-size:14.5px; color:var(--ink-2); max-width:74ch; }
+.mono { font-family:var(--mono); }
+footer { border-top:1px solid var(--rule); padding-top:18px; font-size:12.5px;
+  color:var(--muted); display:flex; flex-direction:column; gap:6px; }
+@media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Backtest · BTCUSD · 2026-07-14 → 2026-08-17 · 34.7 days</div>
+  <h1>Five ideas for making the bot smarter. The data killed three of them.</h1>
+  <p class="lede">Every M1 bar of real Exness history, replayed through the same
+  <span class="mono" style="font-size:.92em">SMCStrategy</span> code the live bot runs.
+  $1,000 to start, 0.05 lots. The bot went from losing 5.43% to
+  making 5.74% — but almost none of that came from the changes that
+  sounded most sensible.</p>
+</header>
+
+<div class="duo">
+  <div class="pane">
+    <div class="k-lab">Before</div>
+    <div class="fig dn">−$54.29</div>
+    <div class="note">1:3, signals as generated · 26 trades · 19.2% won</div>
+  </div>
+  <div class="pane">
+    <div class="k-lab">Now</div>
+    <div class="fig up">+$57.36</div>
+    <div class="note">1:2.5, signals inverted · 23 trades · 39.1% won</div>
+  </div>
+  <div class="pane">
+    <div class="k-lab">Per trade</div>
+    <div class="fig up">+0.37R</div>
+    <div class="note">profit factor 1.94 · max drawdown 2.51%</div>
+  </div>
+</div>
+
+<section>
+  <h2>What survived contact with the data</h2>
+  <p class="sub">Each change was measured on its own before being kept. Expectancy
+  per trade in R is the yardstick — dollar totals mislead when the stop rule
+  changes how much each trade risks.</p>
+  <div class="verdicts"><div class="v-card kept"><div class="v-head"><h3>Target multiple</h3><span class="pill kept">kept</span></div><p class="v-claim">Fixed 1:3 may be throwing away winners</p><p>Swept 1.0–4.0. Inverted expectancy is positive at every value — that is the finding. The peak at 2.5 is inside one standard error of every other value, so 2.5 is a pick, not an optimum.</p></div><div class="v-card kept"><div class="v-head"><h3>15m zone layer</h3><span class="pill kept">kept</span></div><p class="v-claim">Zones are not filtered for quality</p><p>Removing them entirely drops inverted expectancy from +0.370 to −0.169 over 278 trades. The zones are carrying the whole result.</p></div><div class="v-card kept"><div class="v-head"><h3>Trend filter</h3><span class="pill kept">kept</span></div><p class="v-claim">100 EMA is a weak bias filter</p><p>Removing it costs +0.370 → +0.235 expectancy. It earns its place.</p></div><div class="v-card killed"><div class="v-head"><h3>Structural stop</h3><span class="pill killed">rejected</span></div><p class="v-claim">Stop should sit where the setup dies, not N bars back</p><p>Measured worse at every ratio: swing −0.045, zone +0.050, against +0.370 for the original window rule. Fading a signal means a tighter stop on the fade side simply gets hit more.</p></div><div class="v-card killed"><div class="v-head"><h3>One shot per zone</h3><span class="pill killed">rejected</span></div><p class="v-claim">A zone that already failed should not re-fire</p><p>+0.370 → +0.273. No evidence it helps; on 23 trades the difference is one trade anyway.</p></div></div>
+</section>
+
+<section>
+  <h2>The signal is wrong at every target</h2>
+  <p class="sub">Expectancy per trade, sweeping the risk-reward ratio. Taking the
+  signals as generated loses at all six settings; taking the opposite side wins at
+  all six. That consistency is worth more than any single result — but note these
+  are six views of one dataset, not six independent tests.</p>
+  <div class="stack">
+    <h3 class="run">Signals as generated</h3>
+    <div class="card"><div class="scroll"><svg viewBox="0 0 1040 150" role="img" aria-label="Expectancy per trade by risk-reward ratio, as-signalled"><line class="grid" x1="44" x2="1024" y1="32.3" y2="32.3"/><text class="tick" x="35" y="36.3" text-anchor="end">+0.25</text><line class="baseline" x1="44" x2="1024" y1="62.0" y2="62.0"/><text class="tick" x="35" y="66.0" text-anchor="end">+0.00</text><line class="grid" x1="44" x2="1024" y1="91.8" y2="91.8"/><text class="tick" x="35" y="95.8" text-anchor="end">-0.25</text><line class="grid" x1="44" x2="1024" y1="121.6" y2="121.6"/><text class="tick" x="35" y="125.6" text-anchor="end">-0.50</text><path class="bar dn" d="M93.7,62.0 L93.7,113.1 Q93.7,117.1 97.7,117.1 L153.7,117.1 Q157.7,117.1 157.7,113.1 L157.7,62.0 Z" data-tip="RRR 1:1|26 trades · 26.9% won|-0.462R per trade   $-75.97"/><text class="vlab" x="125.7" y="131.1" text-anchor="middle">-0.462</text><text class="tick" x="125.7" y="144" text-anchor="middle">1:1</text><path class="bar dn" d="M257.0,62.0 L257.0,108.4 Q257.0,112.4 261.0,112.4 L317.0,112.4 Q321.0,112.4 321.0,108.4 L321.0,62.0 Z" data-tip="RRR 1:1.5|26 trades · 23.1% won|-0.423R per trade   $-76.40"/><text class="vlab" x="289.0" y="126.4" text-anchor="middle">-0.423</text><text class="tick" x="289.0" y="144" text-anchor="middle">1:1.5</text><path class="bar dn" d="M420.3,62.0 L420.3,108.4 Q420.3,112.4 424.3,112.4 L480.3,112.4 Q484.3,112.4 484.3,108.4 L484.3,62.0 Z" data-tip="RRR 1:2|26 trades · 19.2% won|-0.423R per trade   $-73.40"/><text class="vlab" x="452.3" y="126.4" text-anchor="middle">-0.423</text><text class="tick" x="452.3" y="144" text-anchor="middle">1:2</text><path class="bar dn" d="M583.7,62.0 L583.7,97.0 Q583.7,101.0 587.7,101.0 L643.7,101.0 Q647.7,101.0 647.7,97.0 L647.7,62.0 Z" data-tip="RRR 1:2.5|26 trades · 19.2% won|-0.327R per trade   $-63.84"/><text class="vlab" x="615.7" y="115.0" text-anchor="middle">-0.327</text><text class="tick" x="615.7" y="144" text-anchor="middle">1:2.5</text><path class="bar dn" d="M747.0,62.0 L747.0,85.6 Q747.0,89.6 751.0,89.6 L807.0,89.6 Q811.0,89.6 811.0,85.6 L811.0,62.0 Z" data-tip="RRR 1:3|26 trades · 19.2% won|-0.231R per trade   $-54.29"/><text class="vlab" x="779.0" y="103.6" text-anchor="middle">-0.231</text><text class="tick" x="779.0" y="144" text-anchor="middle">1:3</text><path class="bar dn" d="M910.3,62.0 L910.3,85.6 Q910.3,89.6 914.3,89.6 L970.3,89.6 Q974.3,89.6 974.3,85.6 L974.3,62.0 Z" data-tip="RRR 1:4|26 trades · 15.4% won|-0.231R per trade   $-57.83"/><text class="vlab" x="942.3" y="103.6" text-anchor="middle">-0.231</text><text class="tick" x="942.3" y="144" text-anchor="middle">1:4</text></svg></div><div class="tip"></div></div>
+    <h3 class="run">Signals inverted</h3>
+    <div class="card"><div class="scroll"><svg viewBox="0 0 1040 150" role="img" aria-label="Expectancy per trade by risk-reward ratio, inverted"><line class="grid" x1="44" x2="1024" y1="32.3" y2="32.3"/><text class="tick" x="35" y="36.3" text-anchor="end">+0.25</text><line class="baseline" x1="44" x2="1024" y1="62.0" y2="62.0"/><text class="tick" x="35" y="66.0" text-anchor="end">+0.00</text><line class="grid" x1="44" x2="1024" y1="91.8" y2="91.8"/><text class="tick" x="35" y="95.8" text-anchor="end">-0.25</text><line class="grid" x1="44" x2="1024" y1="121.6" y2="121.6"/><text class="tick" x="35" y="125.6" text-anchor="end">-0.50</text><path class="bar up" d="M93.7,62.0 L93.7,35.2 Q93.7,31.2 97.7,31.2 L153.7,31.2 Q157.7,31.2 157.7,35.2 L157.7,62.0 Z" data-tip="RRR 1:1|27 trades · 63.0% won|+0.259R per trade   $+54.44"/><text class="vlab" x="125.7" y="25.2" text-anchor="middle">+0.259</text><text class="tick" x="125.7" y="144" text-anchor="middle">1:1</text><path class="bar up" d="M257.0,62.0 L257.0,48.6 Q257.0,44.6 261.0,44.6 L317.0,44.6 Q321.0,44.6 321.0,48.6 L321.0,62.0 Z" data-tip="RRR 1:1.5|24 trades · 45.8% won|+0.146R per trade   $+28.94"/><text class="vlab" x="289.0" y="38.6" text-anchor="middle">+0.146</text><text class="tick" x="289.0" y="144" text-anchor="middle">1:1.5</text><path class="bar up" d="M420.3,62.0 L420.3,42.2 Q420.3,38.2 424.3,38.2 L480.3,38.2 Q484.3,38.2 484.3,42.2 L484.3,62.0 Z" data-tip="RRR 1:2|25 trades · 40.0% won|+0.200R per trade   $+41.27"/><text class="vlab" x="452.3" y="32.2" text-anchor="middle">+0.200</text><text class="tick" x="452.3" y="144" text-anchor="middle">1:2</text><path class="bar up" d="M583.7,62.0 L583.7,22.0 Q583.7,18.0 587.7,18.0 L643.7,18.0 Q647.7,18.0 647.7,22.0 L647.7,62.0 Z" data-tip="RRR 1:2.5|23 trades · 39.1% won|+0.370R per trade   $+57.36"/><text class="vlab" x="615.7" y="12.0" text-anchor="middle">+0.370</text><text class="tick" x="615.7" y="144" text-anchor="middle">1:2.5</text><path class="bar up" d="M747.0,62.0 L747.0,40.2 Q747.0,36.2 751.0,36.2 L807.0,36.2 Q811.0,36.2 811.0,40.2 L811.0,62.0 Z" data-tip="RRR 1:3|23 trades · 30.4% won|+0.217R per trade   $+22.80"/><text class="vlab" x="779.0" y="30.2" text-anchor="middle">+0.217</text><text class="tick" x="779.0" y="144" text-anchor="middle">1:3</text><path class="bar up" d="M910.3,62.0 L910.3,49.8 Q910.3,45.8 914.3,45.8 L970.3,45.8 Q974.3,45.8 974.3,49.8 L974.3,62.0 Z" data-tip="RRR 1:4|22 trades · 22.7% won|+0.136R per trade   $+36.42"/><text class="vlab" x="942.3" y="39.8" text-anchor="middle">+0.136</text><text class="tick" x="942.3" y="144" text-anchor="middle">1:4</text></svg></div><div class="tip"></div></div>
+  </div>
+</section>
+
+<section>
+  <h2>Where the edge actually lives</h2>
+  <p class="sub">Strip out one layer at a time and re-run. The 15m point-of-interest
+  zones are not decoration — without them the inverted bot takes 278 trades and loses
+  $315. The 1m trigger on its own is worth nothing.</p>
+  <div class="card scroll">
+    <table>
+      <thead><tr><th scope="col">Layer removed</th><th scope="col">Trades</th>
+      <th scope="col">expR as signalled</th><th scope="col">expR inverted</th></tr></thead>
+      <tbody><tr class='hi'><th scope="row">full strategy</th><td class="num muted">23</td><td class="num sign dn">-0.327</td><td class="num sign up">+0.370</td></tr><tr><th scope="row">no trend filter</th><td class="num muted">34</td><td class="num sign dn">-0.222</td><td class="num sign up">+0.235</td></tr><tr><th scope="row">no 15m zone</th><td class="num muted">278</td><td class="num sign dn">-0.082</td><td class="num sign dn">-0.169</td></tr><tr><th scope="row">no zone, no trend</th><td class="num muted">278</td><td class="num sign dn">-0.082</td><td class="num sign dn">-0.169</td></tr><tr><th scope="row">one shot per zone</th><td class="num muted">22</td><td class="num sign dn">-0.205</td><td class="num sign up">+0.273</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>The structural stop was a good idea that lost</h2>
+  <p class="sub">Placing the stop where the setup is invalidated — behind the swing
+  the shift broke, or behind the zone — is the textbook answer and it is measurably
+  worse here. Fading a signal puts the stop on the side price is travelling toward,
+  so tightening it just feeds the loss column. Expectancy in R, inverted mode.</p>
+  <div class="card scroll">
+    <table>
+      <thead><tr><th scope="col">Stop rule</th><th scope="col">Avg risk</th>
+      <th scope="col">1:1.5</th><th scope="col">1:2</th><th scope="col">1:2.5</th>
+      <th scope="col">1:3</th></tr></thead>
+      <tbody><tr class='hi'><th scope="row">window</th><td class="num muted">$4.73</td><td class="num sign up">+0.146</td><td class="num sign up">+0.200</td><td class="num sign up">+0.370</td><td class="num sign up">+0.217</td></tr><tr><th scope="row">swing</th><td class="num muted">$5.23</td><td class="num sign up">+0.136</td><td class="num sign up">+0.091</td><td class="num sign dn">-0.045</td><td class="num sign dn">-0.238</td></tr><tr><th scope="row">zone</th><td class="num muted">$10.90</td><td class="num sign up">+0.125</td><td class="num sign up">+0.200</td><td class="num sign up">+0.050</td><td class="num sign dn">+0.000</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+<div class="flag">
+  <h2>The honest size of this result</h2>
+  <p>23 trades. If every trade were a coin with the 29% win chance that a
+  1:2.5 target needs to break even, you would see 9 wins or better
+  <b>18% of the time</b> by luck alone. The one statistically solid number in
+  this whole report is the 389-trade ablation run — and it says the 1m trigger by itself
+  is worth −0.08R.</p>
+  <p>The choice of 1:2.5 in particular is not supported: the standard error on
+  expectancy here is about ±0.35R, so every ratio in the sweep sits inside one error bar
+  of every other. Treat the configuration as a hypothesis to test forward, not a result.</p>
+</div>
+
+<section>
+  <h2>Equity path</h2>
+  <div class="card"><div class="scroll"><svg viewBox="0 0 1040 280" role="img" aria-label="Balance over 34 days, from $1000 to $1,057.36">
+<defs><clipPath id="ab"><rect x="0" y="0" width="1040" height="195.9"/></clipPath>
+<clipPath id="be"><rect x="0" y="195.9" width="1040" height="84.1"/></clipPath></defs>
+<line class="grid" x1="62" x2="1016" y1="195.9" y2="195.9"/><text class="tick" x="51" y="199.9" text-anchor="end">$1000</text><line class="grid" x1="62" x2="1016" y1="132.9" y2="132.9"/><text class="tick" x="51" y="136.9" text-anchor="end">$1025</text><line class="grid" x1="62" x2="1016" y1="69.9" y2="69.9"/><text class="tick" x="51" y="73.9" text-anchor="end">$1050</text><path class="fill-up" d="M62.0,195.9 L66.1,203.2 L71.0,215.8 L89.2,166.8 L120.6,124.0 L219.2,133.6 L223.2,109.9 L243.1,48.2 L465.6,64.1 L471.1,77.1 L513.7,94.9 L529.5,106.2 L607.5,115.2 L616.8,67.0 L658.8,81.2 L669.8,92.2 L676.7,102.7 L705.9,88.3 L707.1,98.6 L755.2,104.1 L835.2,110.7 L853.5,86.2 L893.7,66.4 L1016.0,51.4 L1016.0,195.9 L62.0,195.9 Z" clip-path="url(#ab)"/>
+<path class="fill-dn" d="M62.0,195.9 L66.1,203.2 L71.0,215.8 L89.2,166.8 L120.6,124.0 L219.2,133.6 L223.2,109.9 L243.1,48.2 L465.6,64.1 L471.1,77.1 L513.7,94.9 L529.5,106.2 L607.5,115.2 L616.8,67.0 L658.8,81.2 L669.8,92.2 L676.7,102.7 L705.9,88.3 L707.1,98.6 L755.2,104.1 L835.2,110.7 L853.5,86.2 L893.7,66.4 L1016.0,51.4 L1016.0,195.9 L62.0,195.9 Z" clip-path="url(#be)"/>
+<line class="baseline" x1="62" x2="1016" y1="195.9" y2="195.9"/>
+<text class="tick" x="1016" y="187.9" text-anchor="end">start $1,000</text>
+<path class="line" d="M62.0,195.9 L66.1,203.2 L71.0,215.8 L89.2,166.8 L120.6,124.0 L219.2,133.6 L223.2,109.9 L243.1,48.2 L465.6,64.1 L471.1,77.1 L513.7,94.9 L529.5,106.2 L607.5,115.2 L616.8,67.0 L658.8,81.2 L669.8,92.2 L676.7,102.7 L705.9,88.3 L707.1,98.6 L755.2,104.1 L835.2,110.7 L853.5,86.2 L893.7,66.4 L1016.0,51.4"/><circle class="pt" cx="62.0" cy="195.9" r="3"/><circle class="pt" cx="66.1" cy="203.2" r="3"/><circle class="pt" cx="71.0" cy="215.8" r="3"/><circle class="pt" cx="89.2" cy="166.8" r="3"/><circle class="pt" cx="120.6" cy="124.0" r="3"/><circle class="pt" cx="219.2" cy="133.6" r="3"/><circle class="pt" cx="223.2" cy="109.9" r="3"/><circle class="pt" cx="243.1" cy="48.2" r="3"/><circle class="pt" cx="465.6" cy="64.1" r="3"/><circle class="pt" cx="471.1" cy="77.1" r="3"/><circle class="pt" cx="513.7" cy="94.9" r="3"/><circle class="pt" cx="529.5" cy="106.2" r="3"/><circle class="pt" cx="607.5" cy="115.2" r="3"/><circle class="pt" cx="616.8" cy="67.0" r="3"/><circle class="pt" cx="658.8" cy="81.2" r="3"/><circle class="pt" cx="669.8" cy="92.2" r="3"/><circle class="pt" cx="676.7" cy="102.7" r="3"/><circle class="pt" cx="705.9" cy="88.3" r="3"/><circle class="pt" cx="707.1" cy="98.6" r="3"/><circle class="pt" cx="755.2" cy="104.1" r="3"/><circle class="pt" cx="835.2" cy="110.7" r="3"/><circle class="pt" cx="853.5" cy="86.2" r="3"/><circle class="pt" cx="893.7" cy="66.4" r="3"/><circle class="pt" cx="1016.0" cy="51.4" r="3"/>
+<circle class="end-up" cx="1016.0" cy="51.4" r="5"/>
+<text class="tick" x="62.0" y="267" text-anchor="start">14 Jul</text><text class="tick" x="386.4" y="267" text-anchor="middle">25 Jul</text><text class="tick" x="701.2" y="267" text-anchor="middle">06 Aug</text><text class="tick" x="1016.0" y="267" text-anchor="end">17 Aug</text><line class="cross" x1="0" x2="0" y1="18" y2="246" style="opacity:0"/><rect class="hit" x="54.0" y="18" width="16" height="228" data-label="Start" data-date="14 Jul, 03:00" data-bal="1,000.00"/><rect class="hit" x="58.1" y="18" width="16" height="228" data-label="After trade #1" data-date="14 Jul, 06:34" data-bal="997.10"/><rect class="hit" x="63.0" y="18" width="16" height="228" data-label="After trade #2" data-date="14 Jul, 10:44" data-bal="992.11"/><rect class="hit" x="81.2" y="18" width="16" height="228" data-label="After trade #3" data-date="15 Jul, 02:29" data-bal="1,011.57"/><rect class="hit" x="112.6" y="18" width="16" height="228" data-label="After trade #4" data-date="16 Jul, 05:33" data-bal="1,028.54"/><rect class="hit" x="211.2" y="18" width="16" height="228" data-label="After trade #5" data-date="19 Jul, 18:31" data-bal="1,024.73"/><rect class="hit" x="215.2" y="18" width="16" height="228" data-label="After trade #6" data-date="19 Jul, 22:01" data-bal="1,034.15"/><rect class="hit" x="235.1" y="18" width="16" height="228" data-label="After trade #7" data-date="20 Jul, 15:10" data-bal="1,058.62"/><rect class="hit" x="457.6" y="18" width="16" height="228" data-label="After trade #8" data-date="28 Jul, 15:03" data-bal="1,052.31"/><rect class="hit" x="463.1" y="18" width="16" height="228" data-label="After trade #9" data-date="28 Jul, 19:46" data-bal="1,047.17"/><rect class="hit" x="505.7" y="18" width="16" height="228" data-label="After trade #10" data-date="30 Jul, 08:27" data-bal="1,040.08"/><rect class="hit" x="521.5" y="18" width="16" height="228" data-label="After trade #11" data-date="30 Jul, 22:08" data-bal="1,035.61"/><rect class="hit" x="599.5" y="18" width="16" height="228" data-label="After trade #12" data-date="02 Aug, 17:24" data-bal="1,032.05"/><rect class="hit" x="608.8" y="18" width="16" height="228" data-label="After trade #13" data-date="03 Aug, 01:26" data-bal="1,051.16"/><rect class="hit" x="650.8" y="18" width="16" height="228" data-label="After trade #14" data-date="04 Aug, 13:36" data-bal="1,045.52"/><rect class="hit" x="661.8" y="18" width="16" height="228" data-label="After trade #15" data-date="04 Aug, 23:07" data-bal="1,041.17"/><rect class="hit" x="668.7" y="18" width="16" height="228" data-label="After trade #16" data-date="05 Aug, 05:02" data-bal="1,036.99"/><rect class="hit" x="697.9" y="18" width="16" height="228" data-label="After trade #17" data-date="06 Aug, 06:13" data-bal="1,042.71"/><rect class="hit" x="699.1" y="18" width="16" height="228" data-label="After trade #18" data-date="06 Aug, 07:14" data-bal="1,038.64"/><rect class="hit" x="747.2" y="18" width="16" height="228" data-label="After trade #19" data-date="08 Aug, 00:45" data-bal="1,036.43"/><rect class="hit" x="827.2" y="18" width="16" height="228" data-label="After trade #20" data-date="10 Aug, 21:43" data-bal="1,033.84"/><rect class="hit" x="845.5" y="18" width="16" height="228" data-label="After trade #21" data-date="11 Aug, 13:31" data-bal="1,043.54"/><rect class="hit" x="885.7" y="18" width="16" height="228" data-label="After trade #22" data-date="13 Aug, 00:09" data-bal="1,051.40"/><rect class="hit" x="1008.0" y="18" width="16" height="228" data-label="After trade #23" data-date="17 Aug, 09:37" data-bal="1,057.36"/></svg></div><div class="tip"></div></div>
+</section>
+
+<section>
+  <h2>Every trade, in R</h2>
+  <div class="card"><div class="scroll"><svg viewBox="0 0 1040 190" role="img" aria-label="23 trade results in R"><line class="grid" x1="38" x2="1022" y1="45.5" y2="45.5"/><text class="tick" x="29" y="49.5" text-anchor="end">+2R</text><line class="baseline" x1="38" x2="1022" y1="115.5" y2="115.5"/><text class="tick" x="29" y="119.5" text-anchor="end">+0R</text><line class="grid" x1="38" x2="1022" y1="150.5" y2="150.5"/><text class="tick" x="29" y="154.5" text-anchor="end">-1R</text><path class="bar dn" d="M40.0,115.5 L40.0,146.5 Q40.0,150.5 44.0,150.5 L74.8,150.5 Q78.8,150.5 78.8,146.5 L78.8,115.5 Z" data-tip="Trade #1 · SELL|2026-07-14 06:14|SL  -1.00R   $-2.90"/><path class="bar dn" d="M82.8,115.5 L82.8,146.5 Q82.8,150.5 86.8,150.5 L117.6,150.5 Q121.6,150.5 121.6,146.5 L121.6,115.5 Z" data-tip="Trade #2 · SELL|2026-07-14 10:38|SL  -1.00R   $-4.99"/><path class="bar up" d="M125.6,115.5 L125.6,32.0 Q125.6,28.0 129.6,28.0 L160.3,28.0 Q164.3,28.0 164.3,32.0 L164.3,115.5 Z" data-tip="Trade #3 · SELL|2026-07-14 23:09|TP  +2.50R   $+19.46"/><path class="bar up" d="M168.3,115.5 L168.3,32.0 Q168.3,28.0 172.3,28.0 L203.1,28.0 Q207.1,28.0 207.1,32.0 L207.1,115.5 Z" data-tip="Trade #4 · BUY|2026-07-16 01:45|TP  +2.50R   $+16.97"/><path class="bar dn" d="M211.1,115.5 L211.1,146.5 Q211.1,150.5 215.1,150.5 L245.9,150.5 Q249.9,150.5 249.9,146.5 L249.9,115.5 Z" data-tip="Trade #5 · BUY|2026-07-19 18:28|SL  -1.00R   $-3.81"/><path class="bar up" d="M253.9,115.5 L253.9,32.0 Q253.9,28.0 257.9,28.0 L288.7,28.0 Q292.7,28.0 292.7,32.0 L292.7,115.5 Z" data-tip="Trade #6 · BUY|2026-07-19 18:48|TP  +2.50R   $+9.42"/><path class="bar up" d="M296.7,115.5 L296.7,32.0 Q296.7,28.0 300.7,28.0 L331.5,28.0 Q335.5,28.0 335.5,32.0 L335.5,115.5 Z" data-tip="Trade #7 · BUY|2026-07-20 14:38|TP  +2.50R   $+24.47"/><path class="bar dn" d="M339.5,115.5 L339.5,146.5 Q339.5,150.5 343.5,150.5 L374.3,150.5 Q378.3,150.5 378.3,146.5 L378.3,115.5 Z" data-tip="Trade #8 · BUY|2026-07-28 14:59|SL  -1.00R   $-6.32"/><path class="bar dn" d="M382.3,115.5 L382.3,146.5 Q382.3,150.5 386.3,150.5 L417.0,150.5 Q421.0,150.5 421.0,146.5 L421.0,115.5 Z" data-tip="Trade #9 · BUY|2026-07-28 19:41|SL  -1.00R   $-5.14"/><path class="bar dn" d="M425.0,115.5 L425.0,146.5 Q425.0,150.5 429.0,150.5 L459.8,150.5 Q463.8,150.5 463.8,146.5 L463.8,115.5 Z" data-tip="Trade #10 · SELL|2026-07-30 07:20|SL  -1.00R   $-7.09"/><path class="bar dn" d="M467.8,115.5 L467.8,146.5 Q467.8,150.5 471.8,150.5 L502.6,150.5 Q506.6,150.5 506.6,146.5 L506.6,115.5 Z" data-tip="Trade #11 · SELL|2026-07-30 19:52|SL  -1.00R   $-4.46"/><path class="bar dn" d="M510.6,115.5 L510.6,146.5 Q510.6,150.5 514.6,150.5 L545.4,150.5 Q549.4,150.5 549.4,146.5 L549.4,115.5 Z" data-tip="Trade #12 · SELL|2026-08-02 17:12|SL  -1.00R   $-3.56"/><path class="bar up" d="M553.4,115.5 L553.4,32.0 Q553.4,28.0 557.4,28.0 L588.2,28.0 Q592.2,28.0 592.2,32.0 L592.2,115.5 Z" data-tip="Trade #13 · SELL|2026-08-02 22:45|TP  +2.50R   $+19.11"/><path class="bar dn" d="M596.2,115.5 L596.2,146.5 Q596.2,150.5 600.2,150.5 L631.0,150.5 Q635.0,150.5 635.0,146.5 L635.0,115.5 Z" data-tip="Trade #14 · SELL|2026-08-04 13:04|SL  -1.00R   $-5.64"/><path class="bar dn" d="M639.0,115.5 L639.0,146.5 Q639.0,150.5 643.0,150.5 L673.7,150.5 Q677.7,150.5 677.7,146.5 L677.7,115.5 Z" data-tip="Trade #15 · SELL|2026-08-04 21:25|SL  -1.00R   $-4.35"/><path class="bar dn" d="M681.7,115.5 L681.7,146.5 Q681.7,150.5 685.7,150.5 L716.5,150.5 Q720.5,150.5 720.5,146.5 L720.5,115.5 Z" data-tip="Trade #16 · SELL|2026-08-05 04:20|SL  -1.00R   $-4.18"/><path class="bar up" d="M724.5,115.5 L724.5,32.0 Q724.5,28.0 728.5,28.0 L759.3,28.0 Q763.3,28.0 763.3,32.0 L763.3,115.5 Z" data-tip="Trade #17 · SELL|2026-08-06 05:59|TP  +2.50R   $+5.72"/><path class="bar dn" d="M767.3,115.5 L767.3,146.5 Q767.3,150.5 771.3,150.5 L802.1,150.5 Q806.1,150.5 806.1,146.5 L806.1,115.5 Z" data-tip="Trade #18 · SELL|2026-08-06 06:26|SL  -1.00R   $-4.07"/><path class="bar dn" d="M810.1,115.5 L810.1,146.5 Q810.1,150.5 814.1,150.5 L844.9,150.5 Q848.9,150.5 848.9,146.5 L848.9,115.5 Z" data-tip="Trade #19 · SELL|2026-08-08 00:30|SL  -1.00R   $-2.20"/><path class="bar dn" d="M852.9,115.5 L852.9,146.5 Q852.9,150.5 856.9,150.5 L887.7,150.5 Q891.7,150.5 891.7,146.5 L891.7,115.5 Z" data-tip="Trade #20 · BUY|2026-08-10 21:40|SL  -1.00R   $-2.59"/><path class="bar up" d="M895.7,115.5 L895.7,32.0 Q895.7,28.0 899.7,28.0 L930.4,28.0 Q934.4,28.0 934.4,32.0 L934.4,115.5 Z" data-tip="Trade #21 · SELL|2026-08-11 13:08|TP  +2.50R   $+9.70"/><path class="bar up" d="M938.4,115.5 L938.4,32.0 Q938.4,28.0 942.4,28.0 L973.2,28.0 Q977.2,28.0 977.2,32.0 L977.2,115.5 Z" data-tip="Trade #22 · BUY|2026-08-12 23:42|TP  +2.50R   $+7.86"/><path class="bar up" d="M981.2,115.5 L981.2,32.0 Q981.2,28.0 985.2,28.0 L1016.0,28.0 Q1020.0,28.0 1020.0,32.0 L1020.0,115.5 Z" data-tip="Trade #23 · SELL|2026-08-17 08:33|TP  +2.50R   $+5.96"/></svg></div><div class="tip"></div></div>
+</section>
+
+<section>
+  <h2>The ledger</h2>
+  <p class="sub">All 23 trades at the shipped configuration. Entry is the fill
+  price including spread; risk is the dollar distance to the stop at 0.05 lots.</p>
+  <div class="card scroll"><table class="led">
+    <thead><tr><th>#</th><th>Side</th><th>Entered</th><th>Exited</th><th>Entry</th>
+    <th>Stop</th><th>Target</th><th>Risk&nbsp;$</th><th>Exit</th><th>P&amp;L&nbsp;$</th>
+    <th>R</th><th>Held</th><th>Balance</th></tr></thead>
+    <tbody><tr class="l"><td class="n">1</td><td><span class="dir sell">SELL</span></td><td class="d">2026-07-14 06:14</td><td class="d">2026-07-14 06:34</td><td class="num">62,635.83</td><td class="num">62,693.89</td><td class="num">62,490.68</td><td class="num muted">2.90</td><td><span class="tag sl">SL</span></td><td class="num sign dn">-2.90</td><td class="num sign dn">-1.00</td><td class="num muted">20m</td><td class="num bal">997.10</td></tr><tr class="l"><td class="n">2</td><td><span class="dir sell">SELL</span></td><td class="d">2026-07-14 10:38</td><td class="d">2026-07-14 10:44</td><td class="num">62,638.37</td><td class="num">62,738.11</td><td class="num">62,389.02</td><td class="num muted">4.99</td><td><span class="tag sl">SL</span></td><td class="num sign dn">-4.99</td><td class="num sign dn">-1.00</td><td class="num muted">6m</td><td class="num bal">992.11</td></tr><tr class="w"><td class="n">3</td><td><span class="dir sell">SELL</span></td><td class="d">2026-07-14 23:09</td><td class="d">2026-07-15 02:29</td><td class="num">64,880.58</td><td class="num">65,036.28</td><td class="num">64,491.33</td><td class="num muted">7.78</td><td><span class="tag tp">TP</span></td><td class="num sign up">+19.46</td><td class="num sign up">+2.50</td><td class="num muted">200m</td><td class="num bal">1,011.57</td></tr><tr class="w"><td class="n">4</td><td><span class="dir buy">BUY</span></td><td class="d">2026-07-16 01:45</td><td class="d">2026-07-16 05:33</td><td class="num">64,572.11</td><td class="num">64,436.36</td><td class="num">64,911.48</td><td class="num muted">6.79</td><td><span class="tag tp">TP</span></td><td class="num sign up">+16.97</td><td class="num sign up">+2.50</td><td class="num muted">228m</td><td class="num bal">1,028.54</td></tr><tr class="l"><td class="n">5</td><td><span class="dir buy">BUY</span></td><td class="d">2026-07-19 18:28</td><td class="d">2026-07-19 18:31</td><td class="num">64,381.51</td><td class="num">64,305.36</td><td class="num">64,571.88</td><td class="num muted">3.81</td><td><span class="tag sl">SL</span></td><td class="num sign dn">-3.81</td><td class="num sign dn">-1.00</td><td class="num muted">3m</td><td class="num bal">1,024.73</td></tr><tr class="w"><td class="n">6</td><td><span class="dir buy">BUY</span></td><td class="d">2026-07-19 18:48</td><td class="d">2026-07-19 22:01</td><td class="num">64,343.77</td><td class="num">64,268.41</td><td class="num">64,532.17</td><td class="num muted">3.77</td><td><span class="tag tp">TP</span></td><td class="num sign up">+9.42</td><td class="num sign up">+2.50</td><td class="num muted">193m</td><td class="num bal">1,034.15</td></tr><tr class="w"><td class="n">7</td><td><span class="dir buy">BUY</span></td><td class="d">2026-07-20 14:38</td><td class="d">2026-07-20 15:10</td><td class="num">64,300.94</td><td class="num">64,105.17</td><td class="num">64,790.36</td><td class="num muted">9.79</td><td><span class="tag tp">TP</span></td><td class="num sign up">+24.47</td><td class="num sign up">+2.50</td><td class="num muted">32m</td><td class="num bal">1,058.62</td></tr><tr class="l"><td class="n">8</td><td><span class="dir buy">BUY</span></td><td class="d">2026-07-28 14:59</td><td class="d">2026-07-28 15:03</td><td class="num">63,365.42</td><td class="num">63,239.04</td><td class="num">63,681.37</td><td class="num muted">6.32</td><td><span class="tag sl">SL</span></td><td class="num sign dn">-6.32</td><td class="num sign dn">-1.00</td><td class="num muted">4m</td><td class="num bal">1,052.31</td></tr><tr class="l"><td class="n">9</td><td><span class="dir buy">BUY</span></td><td class="d">2026-07-28 19:41</td><td class="d">2026-07-28 19:46</td><td class="num">63,698.86</td><td class="num">63,596.08</td><td class="num">63,955.81</td><td class="num muted">5.14</td><td><span class="tag sl">SL</span></td><td class="num sign dn">-5.14</td><td class="num sign dn">-1.00</td><td class="num muted">5m</td><td class="num bal">1,047.17</td></tr><tr class="l"><td class="n">10</td><td><span class="dir sell">SELL</span></td><td class="d">2026-07-30 07:20</td><td class="d">2026-07-30 08:27</td><td class="num">64,040.64</td><td class="num">64,182.45</td><td class="num">63,686.11</td><td class="num muted">7.09</td><td><span class="tag sl">SL</span></td><td class="num sign dn">-7.09</td><td class="num sign dn">-1.00</td><td class="num muted">67m</td><td class="num bal">1,040.08</td></tr><tr class="l"><td class="n">11</td><td><span class="dir sell">SELL</span></td><td class="d">2026-07-30 19:52</td><td class="d">2026-07-30 22:08</td><td class="num">64,791.29</td><td class="num">64,880.52</td><td class="num">64,568.22</td><td class="num muted">4.46</td><td><span class="tag sl">SL</span></td><td class="num sign dn">-4.46</td><td class="num sign dn">-1.00</td><td class="num muted">136m</td><td class="num bal">1,035.61</td></tr><tr class="l"><td class="n">12</td><td><span class="dir sell">SELL</span></td><td class="d">2026-08-02 17:12</td><td class="d">2026-08-02 17:24</td><td class="num">63,149.36</td><td class="num">63,220.62</td><td class="num">62,971.21</td><td class="num muted">3.56</td><td><span class="tag sl">SL</span></td><td class="num sign dn">-3.56</td><td class="num sign dn">-1.00</td><td class="num muted">12m</td><td class="num bal">1,032.05</td></tr><tr class="w"><td class="n">13</td><td><span class="dir sell">SELL</span></td><td class="d">2026-08-02 22:45</td><td class="d">2026-08-03 01:26</td><td class="num">63,443.56</td><td class="num">63,596.44</td><td class="num">63,061.36</td><td class="num muted">7.64</td><td><span class="tag tp">TP</span></td><td class="num sign up">+19.11</td><td class="num sign up">+2.50</td><td class="num muted">161m</td><td class="num bal">1,051.16</td></tr><tr class="l"><td class="n">14</td><td><span class="dir sell">SELL</span></td><td class="d">2026-08-04 13:04</td><td class="d">2026-08-04 13:36</td><td class="num">63,883.31</td><td class="num">63,996.12</td><td class="num">63,601.28</td><td class="num muted">5.64</td><td><span class="tag sl">SL</span></td><td class="num sign dn">-5.64</td><td class="num sign dn">-1.00</td><td class="num muted">32m</td><td class="num bal">1,045.52</td></tr><tr class="l"><td class="n">15</td><td><span class="dir sell">SELL</span></td><td class="d">2026-08-04 21:25</td><td class="d">2026-08-04 23:07</td><td class="num">64,222.33</td><td class="num">64,309.26</td><td class="num">64,005.00</td><td class="num muted">4.35</td><td><span class="tag sl">SL</span></td><td class="num sign dn">-4.35</td><td class="num sign dn">-1.00</td><td class="num muted">102m</td><td class="num bal">1,041.17</td></tr><tr class="l"><td class="n">16</td><td><span class="dir sell">SELL</span></td><td class="d">2026-08-05 04:20</td><td class="d">2026-08-05 05:02</td><td class="num">64,111.12</td><td class="num">64,194.77</td><td class="num">63,902.00</td><td class="num muted">4.18</td><td><span class="tag sl">SL</span></td><td class="num sign dn">-4.18</td><td class="num sign dn">-1.00</td><td class="num muted">42m</td><td class="num bal">1,036.99</td></tr><tr class="w"><td class="n">17</td><td><span class="dir sell">SELL</span></td><td class="d">2026-08-06 05:59</td><td class="d">2026-08-06 06:13</td><td class="num">64,837.04</td><td class="num">64,882.78</td><td class="num">64,722.69</td><td class="num muted">2.29</td><td><span class="tag tp">TP</span></td><td class="num sign up">+5.72</td><td class="num sign up">+2.50</td><td class="num muted">14m</td><td class="num bal">1,042.71</td></tr><tr class="l"><td class="n">18</td><td><span class="dir sell">SELL</span></td><td class="d">2026-08-06 06:26</td><td class="d">2026-08-06 07:14</td><td class="num">64,756.90</td><td class="num">64,838.34</td><td class="num">64,553.30</td><td class="num muted">4.07</td><td><span class="tag sl">SL</span></td><td class="num sign dn">-4.07</td><td class="num sign dn">-1.00</td><td class="num muted">48m</td><td class="num bal">1,038.64</td></tr><tr class="l"><td class="n">19</td><td><span class="dir sell">SELL</span></td><td class="d">2026-08-08 00:30</td><td class="d">2026-08-08 00:45</td><td class="num">64,838.96</td><td class="num">64,883.03</td><td class="num">64,728.78</td><td class="num muted">2.20</td><td><span class="tag sl">SL</span></td><td class="num sign dn">-2.20</td><td class="num sign dn">-1.00</td><td class="num muted">15m</td><td class="num bal">1,036.43</td></tr><tr class="l"><td class="n">20</td><td><span class="dir buy">BUY</span></td><td class="d">2026-08-10 21:40</td><td class="d">2026-08-10 21:43</td><td class="num">64,023.65</td><td class="num">63,971.86</td><td class="num">64,153.12</td><td class="num muted">2.59</td><td><span class="tag sl">SL</span></td><td class="num sign dn">-2.59</td><td class="num sign dn">-1.00</td><td class="num muted">3m</td><td class="num bal">1,033.84</td></tr><tr class="w"><td class="n">21</td><td><span class="dir sell">SELL</span></td><td class="d">2026-08-11 13:08</td><td class="d">2026-08-11 13:31</td><td class="num">64,285.23</td><td class="num">64,362.83</td><td class="num">64,091.23</td><td class="num muted">3.88</td><td><span class="tag tp">TP</span></td><td class="num sign up">+9.70</td><td class="num sign up">+2.50</td><td class="num muted">23m</td><td class="num bal">1,043.54</td></tr><tr class="w"><td class="n">22</td><td><span class="dir buy">BUY</span></td><td class="d">2026-08-12 23:42</td><td class="d">2026-08-13 00:09</td><td class="num">63,365.55</td><td class="num">63,302.70</td><td class="num">63,522.68</td><td class="num muted">3.14</td><td><span class="tag tp">TP</span></td><td class="num sign up">+7.86</td><td class="num sign up">+2.50</td><td class="num muted">27m</td><td class="num bal">1,051.40</td></tr><tr class="w"><td class="n">23</td><td><span class="dir sell">SELL</span></td><td class="d">2026-08-17 08:33</td><td class="d">2026-08-17 09:37</td><td class="num">63,373.59</td><td class="num">63,421.24</td><td class="num">63,254.46</td><td class="num muted">2.38</td><td><span class="tag tp">TP</span></td><td class="num sign up">+5.96</td><td class="num sign up">+2.50</td><td class="num muted">64m</td><td class="num bal">1,057.36</td></tr></tbody>
+  </table></div>
+</section>
+
+<footer>
+  <div><b>Shipped configuration.</b>
+  <span class="mono">INVERT_SIGNALS = True</span> ·
+  <span class="mono">RRR = 2.5</span> ·
+  <span class="mono">STOP_MODE = "window"</span> ·
+  <span class="mono">USE_TREND_FILTER = True</span>. Each is one line in
+  <span class="mono">config.py</span>; reverting any of them changes nothing else.</div>
+  <div><b>Method.</b> Decisions on each closed M1 bar, executed at the next bar's open —
+  no lookahead. MT5 candles are bid: a long fills at ask and exits on bid, a short fills at
+  bid and exits on ask. A bar touching both stop and target is scored as the loss.
+  Not modelled: commission, swap, slippage beyond the spread, intrabar tick order.
+  Spread is the terminal's recorded M1 value, a flat 700 points.</div>
+  <div>50,000 M1 bars · 34.7 days · every run reproducible with
+  <span class="mono">python reports/engine.py</span>.</div>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  document.querySelectorAll(".card").forEach(function (card) {
+    var tip = card.querySelector(".tip");
+    if (!tip) return;
+    var cross = card.querySelector(".cross");
+    function hide() { tip.style.opacity = 0; if (cross) cross.style.opacity = 0; }
+    card.querySelectorAll(".hit, .bar").forEach(function (el) {
+      el.addEventListener("mouseenter", function () {
+        var cr = card.getBoundingClientRect(), r = el.getBoundingClientRect();
+        if (el.classList.contains("hit")) {
+          tip.innerHTML = "<b>" + el.dataset.label + "</b><br>" + el.dataset.date +
+                          "<br>balance $" + el.dataset.bal;
+          if (cross) {
+            var x = parseFloat(el.getAttribute("x")) + parseFloat(el.getAttribute("width")) / 2;
+            cross.setAttribute("x1", x); cross.setAttribute("x2", x);
+            cross.style.opacity = .8;
+          }
+        } else {
+          var p = el.dataset.tip.split("|");
+          tip.innerHTML = "<b>" + p[0] + "</b><br>" + p[1] + "<br>" + p[2];
+        }
+        tip.style.left = (r.left - cr.left + r.width / 2) + "px";
+        tip.style.top = (r.top - cr.top - 8 +
+          (el.classList.contains("hit") ? r.height / 2 : 0)) + "px";
+        tip.style.opacity = 1;
+      });
+      el.addEventListener("mouseleave", hide);
+    });
+  });
+})();
+</script>
