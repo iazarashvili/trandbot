@@ -22,6 +22,7 @@ from config import (
     POLL_INTERVAL,
     RISK_PERCENT,
     RRR,
+    SKIP_WEEKENDS,
     STOP_BUFFER_ATR,
     STOP_MODE,
     SYMBOL,
@@ -179,6 +180,18 @@ def place_order(connector: MT5Connector, setup: dict) -> bool:
 
 def run_cycle(connector: MT5Connector, watch: PoiWatch) -> None:
     """Executes one poll of the market. Raises nothing the caller must handle."""
+    # 0. Weekend filter — no new entries on Saturday/Sunday.
+    if SKIP_WEEKENDS:
+        import datetime
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if now.weekday() >= 5:  # 5=Saturday, 6=Sunday
+            # Still manage open positions, but don't scan for new ones.
+            positions = connector.get_open_positions()
+            if positions:
+                manage_open_positions(connector, positions)
+            logger.info("📅 Weekend — skipping new entries (UTC %s).", now.strftime("%A"))
+            return
+
     # 1. Existing positions take priority over new entries.
     positions = connector.get_open_positions()
     if positions:

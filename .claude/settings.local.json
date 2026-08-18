@@ -12,7 +12,12 @@
       "PowerShell($env:PYTHONPATH = \"E:\\\\trading\\\\tradingBot\"; & E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe -m unittest discover -s E:\\\\trading\\\\tradingBot\\\\tests -t E:\\\\trading\\\\tradingBot 2>&1 | Select-Object -Last 6)",
       "Artifact",
       "PowerShell(Remove-Item *)",
-      "PowerShell($env:PYTHONPATH = \"E:\\\\trading\\\\tradingBot\"; & E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe -m unittest discover -s E:\\\\trading\\\\tradingBot\\\\tests -t E:\\\\trading\\\\tradingBot 2>&1 | Select-Object -Last 3; & E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe E:\\\\trading\\\\tradingBot\\\\reports\\\\build_report.py; & E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe -c \"import sys; sys.path.insert\\(0,'E:/trading/tradingBot'\\); import config,strategy,mt5_connector,main; print\\('imports OK | RRR',config.RRR,'| INVERT',config.INVERT_SIGNALS,'| STOP',config.STOP_MODE\\)\")"
+      "PowerShell($env:PYTHONPATH = \"E:\\\\trading\\\\tradingBot\"; & E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe -m unittest discover -s E:\\\\trading\\\\tradingBot\\\\tests -t E:\\\\trading\\\\tradingBot 2>&1 | Select-Object -Last 3; & E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe E:\\\\trading\\\\tradingBot\\\\reports\\\\build_report.py; & E:\\\\trading\\\\tradingBot\\\\env\\\\Scripts\\\\python.exe -c \"import sys; sys.path.insert\\(0,'E:/trading/tradingBot'\\); import config,strategy,mt5_connector,main; print\\('imports OK | RRR',config.RRR,'| INVERT',config.INVERT_SIGNALS,'| STOP',config.STOP_MODE\\)\")",
+      "Bash(env/Scripts/python.exe reports/engine.py --refresh --invert --rrr 2.5)",
+      "Bash(env/Scripts/python.exe reports/engine.py --sweep)",
+      "Bash(env/Scripts/python.exe reports/engine.py --rrr 3.0 --out bt_sig_rrr3.json)",
+      "Bash(env/Scripts/python.exe reports/engine.py --invert --rrr 2.5 --out final.json~)",
+      "Bash(env/Scripts/python.exe reports/engine.py --ablate --rrr 2.5)"
     ]
   }
 }

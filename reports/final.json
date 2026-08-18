@@ -3,39 +3,239 @@
   "mode": "INVERTED",
   "symbol": "BTCUSD",
   "rrr": 2.5,
-  "period_from": "2026-07-14 03:00:00",
-  "period_to": "2026-08-17 19:12:00",
-  "days": 34.7,
-  "m1_bars": 50000,
+  "period_from": "2026-06-10 08:54:00",
+  "period_to": "2026-08-18 18:52:00",
+  "days": 69.4,
+  "m1_bars": 100000,
   "start_balance": 1000.0,
   "volume": 0.05,
   "spread_points": 700,
-  "end_balance": 1057.36,
-  "net_pnl": 57.36,
-  "return_pct": 5.74,
-  "trades": 23,
-  "wins": 9,
-  "losses": 14,
-  "win_rate": 39.1,
-  "profit_factor": 1.94,
-  "avg_win": 13.19,
-  "avg_loss": -4.38,
-  "expectancy": 2.49,
-  "expectancy_r": 0.37,
-  "total_r": 8.5,
+  "end_balance": 1022.6,
+  "net_pnl": 22.6,
+  "return_pct": 2.26,
+  "trades": 28,
+  "wins": 10,
+  "losses": 18,
+  "win_rate": 35.7,
+  "profit_factor": 1.22,
+  "avg_win": 12.72,
+  "avg_loss": -5.81,
+  "expectancy": 0.81,
+  "expectancy_r": 0.25,
+  "total_r": 7.0,
   "best_trade": 24.47,
-  "worst_trade": -7.09,
-  "max_drawdown": 26.57,
-  "max_drawdown_pct": 2.51,
+  "worst_trade": -13.01,
+  "max_drawdown": 39.23,
+  "max_drawdown_pct": 3.92,
   "longest_win_streak": 3,
-  "longest_loss_streak": 5,
-  "avg_bars_held": 62.5,
-  "avg_risk_usd": 4.73,
-  "runtime_s": 77.7
+  "longest_loss_streak": 7,
+  "avg_bars_held": 58.8,
+  "avg_risk_usd": 5.55,
+  "runtime_s": 25.4
  },
  "trades": [
   {
    "n": 1,
+   "dir": "BUY",
+   "poi": "BEARISH",
+   "trend": "BEARISH",
+   "entry_time": "2026-06-18 02:12:00",
+   "entry": 64503.96,
+   "sl": 64373.82,
+   "tp": 64829.31,
+   "risk_px": 130.14,
+   "risk_usd": 6.51,
+   "spread_px": 7.0,
+   "exit_time": "2026-06-18 03:23:00",
+   "exit_price": 64373.82,
+   "exit_reason": "SL",
+   "bars_held": 71,
+   "pnl": -6.51,
+   "r_multiple": -1.0,
+   "balance": 993.49
+  },
+  {
+   "n": 2,
+   "dir": "BUY",
+   "poi": "BEARISH",
+   "trend": "BEARISH",
+   "entry_time": "2026-06-18 09:26:00",
+   "entry": 64289.45,
+   "sl": 64134.8,
+   "tp": 64676.07,
+   "risk_px": 154.65,
+   "risk_usd": 7.73,
+   "spread_px": 7.0,
+   "exit_time": "2026-06-18 10:00:00",
+   "exit_price": 64134.8,
+   "exit_reason": "SL",
+   "bars_held": 34,
+   "pnl": -7.73,
+   "r_multiple": -1.0,
+   "balance": 985.76
+  },
+  {
+   "n": 3,
+   "dir": "BUY",
+   "poi": "BEARISH",
+   "trend": "BEARISH",
+   "entry_time": "2026-06-19 05:34:00",
+   "entry": 62529.64,
+   "sl": 62420.8,
+   "tp": 62801.74,
+   "risk_px": 108.84,
+   "risk_usd": 5.44,
+   "spread_px": 7.0,
+   "exit_time": "2026-06-19 06:30:00",
+   "exit_price": 62801.74,
+   "exit_reason": "TP",
+   "bars_held": 56,
+   "pnl": 13.6,
+   "r_multiple": 2.5,
+   "balance": 999.37
+  },
+  {
+   "n": 4,
+   "dir": "SELL",
+   "poi": "BULLISH",
+   "trend": "BULLISH",
+   "entry_time": "2026-06-19 20:27:00",
+   "entry": 63013.05,
+   "sl": 63135.1,
+   "tp": 62707.92,
+   "risk_px": 122.05,
+   "risk_usd": 6.1,
+   "spread_px": 7.0,
+   "exit_time": "2026-06-19 20:47:00",
+   "exit_price": 63135.1,
+   "exit_reason": "SL",
+   "bars_held": 20,
+   "pnl": -6.1,
+   "r_multiple": -1.0,
+   "balance": 993.26
+  },
+  {
+   "n": 5,
+   "dir": "SELL",
+   "poi": "BULLISH",
+   "trend": "BULLISH",
+   "entry_time": "2026-06-22 08:44:00",
+   "entry": 64149.66,
+   "sl": 64329.04,
+   "tp": 63701.21,
+   "risk_px": 179.38,
+   "risk_usd": 8.97,
+   "spread_px": 7.0,
+   "exit_time": "2026-06-22 11:06:00",
+   "exit_price": 64329.04,
+   "exit_reason": "SL",
+   "bars_held": 142,
+   "pnl": -8.97,
+   "r_multiple": -1.0,
+   "balance": 984.29
+  },
+  {
+   "n": 6,
+   "dir": "SELL",
+   "poi": "BULLISH",
+   "trend": "BULLISH",
+   "entry_time": "2026-06-29 17:02:00",
+   "entry": 59824.02,
+   "sl": 59928.64,
+   "tp": 59562.47,
+   "risk_px": 104.62,
+   "risk_usd": 5.23,
+   "spread_px": 7.0,
+   "exit_time": "2026-06-29 17:03:00",
+   "exit_price": 59928.64,
+   "exit_reason": "SL",
+   "bars_held": 1,
+   "pnl": -5.23,
+   "r_multiple": -1.0,
+   "balance": 979.06
+  },
+  {
+   "n": 7,
+   "dir": "SELL",
+   "poi": "BULLISH",
+   "trend": "BULLISH",
+   "entry_time": "2026-07-03 15:33:00",
+   "entry": 62013.66,
+   "sl": 62119.42,
+   "tp": 61749.26,
+   "risk_px": 105.76,
+   "risk_usd": 5.29,
+   "spread_px": 7.0,
+   "exit_time": "2026-07-03 17:01:00",
+   "exit_price": 62119.42,
+   "exit_reason": "SL",
+   "bars_held": 88,
+   "pnl": -5.29,
+   "r_multiple": -1.0,
+   "balance": 973.78
+  },
+  {
+   "n": 8,
+   "dir": "SELL",
+   "poi": "BULLISH",
+   "trend": "BULLISH",
+   "entry_time": "2026-07-09 13:38:00",
+   "entry": 62709.29,
+   "sl": 62969.42,
+   "tp": 62058.97,
+   "risk_px": 260.13,
+   "risk_usd": 13.01,
+   "spread_px": 7.0,
+   "exit_time": "2026-07-09 13:51:00",
+   "exit_price": 62969.42,
+   "exit_reason": "SL",
+   "bars_held": 13,
+   "pnl": -13.01,
+   "r_multiple": -1.0,
+   "balance": 960.77
+  },
+  {
+   "n": 9,
+   "dir": "SELL",
+   "poi": "BULLISH",
+   "trend": "BULLISH",
+   "entry_time": "2026-07-10 23:58:00",
+   "entry": 64124.91,
+   "sl": 64175.95,
+   "tp": 63997.31,
+   "risk_px": 51.04,
+   "risk_usd": 2.55,
+   "spread_px": 7.0,
+   "exit_time": "2026-07-11 00:19:00",
+   "exit_price": 63997.31,
+   "exit_reason": "TP",
+   "bars_held": 21,
+   "pnl": 6.38,
+   "r_multiple": 2.5,
+   "balance": 967.15
+  },
+  {
+   "n": 10,
+   "dir": "BUY",
+   "poi": "BEARISH",
+   "trend": "BEARISH",
+   "entry_time": "2026-07-13 05:01:00",
+   "entry": 62595.45,
+   "sl": 62459.05,
+   "tp": 62936.45,
+   "risk_px": 136.4,
+   "risk_usd": 6.82,
+   "spread_px": 7.0,
+   "exit_time": "2026-07-13 07:28:00",
+   "exit_price": 62936.45,
+   "exit_reason": "TP",
+   "bars_held": 147,
+   "pnl": 17.05,
+   "r_multiple": 2.5,
+   "balance": 984.2
+  },
+  {
+   "n": 11,
    "dir": "SELL",
    "poi": "BULLISH",
    "trend": "BULLISH",
@@ -52,10 +252,10 @@
    "bars_held": 20,
    "pnl": -2.9,
    "r_multiple": -1.0,
-   "balance": 997.1
+   "balance": 981.3
   },
   {
-   "n": 2,
+   "n": 12,
    "dir": "SELL",
    "poi": "BULLISH",
    "trend": "BULLISH",
@@ -72,10 +272,10 @@
    "bars_held": 6,
    "pnl": -4.99,
    "r_multiple": -1.0,
-   "balance": 992.11
+   "balance": 976.31
   },
   {
-   "n": 3,
+   "n": 13,
    "dir": "SELL",
    "poi": "BULLISH",
    "trend": "BULLISH",
@@ -92,10 +292,10 @@
    "bars_held": 200,
    "pnl": 19.46,
    "r_multiple": 2.5,
-   "balance": 1011.57
+   "balance": 995.77
   },
   {
-   "n": 4,
+   "n": 14,
    "dir": "BUY",
    "poi": "BEARISH",
    "trend": "BEARISH",
@@ -112,50 +312,10 @@
    "bars_held": 228,
    "pnl": 16.97,
    "r_multiple": 2.5,
-   "balance": 1028.54
+   "balance": 1012.74
   },
   {
-   "n": 5,
-   "dir": "BUY",
-   "poi": "BEARISH",
-   "trend": "BEARISH",
-   "entry_time": "2026-07-19 18:28:00",
-   "entry": 64381.51,
-   "sl": 64305.36,
-   "tp": 64571.88,
-   "risk_px": 76.15,
-   "risk_usd": 3.81,
-   "spread_px": 7.0,
-   "exit_time": "2026-07-19 18:31:00",
-   "exit_price": 64305.36,
-   "exit_reason": "SL",
-   "bars_held": 3,
-   "pnl": -3.81,
-   "r_multiple": -1.0,
-   "balance": 1024.73
-  },
-  {
-   "n": 6,
-   "dir": "BUY",
-   "poi": "BEARISH",
-   "trend": "BEARISH",
-   "entry_time": "2026-07-19 18:48:00",
-   "entry": 64343.77,
-   "sl": 64268.41,
-   "tp": 64532.17,
-   "risk_px": 75.36,
-   "risk_usd": 3.77,
-   "spread_px": 7.0,
-   "exit_time": "2026-07-19 22:01:00",
-   "exit_price": 64532.17,
-   "exit_reason": "TP",
-   "bars_held": 193,
-   "pnl": 9.42,
-   "r_multiple": 2.5,
-   "balance": 1034.15
-  },
-  {
-   "n": 7,
+   "n": 15,
    "dir": "BUY",
    "poi": "BEARISH",
    "trend": "BEARISH",
@@ -172,10 +332,10 @@
    "bars_held": 32,
    "pnl": 24.47,
    "r_multiple": 2.5,
-   "balance": 1058.62
+   "balance": 1037.21
   },
   {
-   "n": 8,
+   "n": 16,
    "dir": "BUY",
    "poi": "BEARISH",
    "trend": "BEARISH",
@@ -192,10 +352,10 @@
    "bars_held": 4,
    "pnl": -6.32,
    "r_multiple": -1.0,
-   "balance": 1052.31
+   "balance": 1030.89
   },
   {
-   "n": 9,
+   "n": 17,
    "dir": "BUY",
    "poi": "BEARISH",
    "trend": "BEARISH",
@@ -212,10 +372,10 @@
    "bars_held": 5,
    "pnl": -5.14,
    "r_multiple": -1.0,
-   "balance": 1047.17
+   "balance": 1025.75
   },
   {
-   "n": 10,
+   "n": 18,
    "dir": "SELL",
    "poi": "BULLISH",
    "trend": "BULLISH",
@@ -232,10 +392,10 @@
    "bars_held": 67,
    "pnl": -7.09,
    "r_multiple": -1.0,
-   "balance": 1040.08
+   "balance": 1018.66
   },
   {
-   "n": 11,
+   "n": 19,
    "dir": "SELL",
    "poi": "BULLISH",
    "trend": "BULLISH",
@@ -252,50 +412,10 @@
    "bars_held": 136,
    "pnl": -4.46,
    "r_multiple": -1.0,
-   "balance": 1035.61
+   "balance": 1014.2
   },
   {
-   "n": 12,
-   "dir": "SELL",
-   "poi": "BULLISH",
-   "trend": "BULLISH",
-   "entry_time": "2026-08-02 17:12:00",
-   "entry": 63149.36,
-   "sl": 63220.62,
-   "tp": 62971.21,
-   "risk_px": 71.26,
-   "risk_usd": 3.56,
-   "spread_px": 7.0,
-   "exit_time": "2026-08-02 17:24:00",
-   "exit_price": 63220.62,
-   "exit_reason": "SL",
-   "bars_held": 12,
-   "pnl": -3.56,
-   "r_multiple": -1.0,
-   "balance": 1032.05
-  },
-  {
-   "n": 13,
-   "dir": "SELL",
-   "poi": "BULLISH",
-   "trend": "BULLISH",
-   "entry_time": "2026-08-02 22:45:00",
-   "entry": 63443.56,
-   "sl": 63596.44,
-   "tp": 63061.36,
-   "risk_px": 152.88,
-   "risk_usd": 7.64,
-   "spread_px": 7.0,
-   "exit_time": "2026-08-03 01:26:00",
-   "exit_price": 63061.36,
-   "exit_reason": "TP",
-   "bars_held": 161,
-   "pnl": 19.11,
-   "r_multiple": 2.5,
-   "balance": 1051.16
-  },
-  {
-   "n": 14,
+   "n": 20,
    "dir": "SELL",
    "poi": "BULLISH",
    "trend": "BULLISH",
@@ -312,10 +432,10 @@
    "bars_held": 32,
    "pnl": -5.64,
    "r_multiple": -1.0,
-   "balance": 1045.52
+   "balance": 1008.56
   },
   {
-   "n": 15,
+   "n": 21,
    "dir": "SELL",
    "poi": "BULLISH",
    "trend": "BULLISH",
@@ -332,10 +452,10 @@
    "bars_held": 102,
    "pnl": -4.35,
    "r_multiple": -1.0,
-   "balance": 1041.17
+   "balance": 1004.21
   },
   {
-   "n": 16,
+   "n": 22,
    "dir": "SELL",
    "poi": "BULLISH",
    "trend": "BULLISH",
@@ -352,10 +472,10 @@
    "bars_held": 42,
    "pnl": -4.18,
    "r_multiple": -1.0,
-   "balance": 1036.99
+   "balance": 1000.03
   },
   {
-   "n": 17,
+   "n": 23,
    "dir": "SELL",
    "poi": "BULLISH",
    "trend": "BULLISH",
@@ -372,10 +492,10 @@
    "bars_held": 14,
    "pnl": 5.72,
    "r_multiple": 2.5,
-   "balance": 1042.71
+   "balance": 1005.75
   },
   {
-   "n": 18,
+   "n": 24,
    "dir": "SELL",
    "poi": "BULLISH",
    "trend": "BULLISH",
@@ -392,30 +512,10 @@
    "bars_held": 48,
    "pnl": -4.07,
    "r_multiple": -1.0,
-   "balance": 1038.64
+   "balance": 1001.68
   },
   {
-   "n": 19,
-   "dir": "SELL",
-   "poi": "BULLISH",
-   "trend": "BULLISH",
-   "entry_time": "2026-08-08 00:30:00",
-   "entry": 64838.96,
-   "sl": 64883.03,
-   "tp": 64728.78,
-   "risk_px": 44.07,
-   "risk_usd": 2.2,
-   "spread_px": 7.0,
-   "exit_time": "2026-08-08 00:45:00",
-   "exit_price": 64883.03,
-   "exit_reason": "SL",
-   "bars_held": 15,
-   "pnl": -2.2,
-   "r_multiple": -1.0,
-   "balance": 1036.43
-  },
-  {
-   "n": 20,
+   "n": 25,
    "dir": "BUY",
    "poi": "BEARISH",
    "trend": "BEARISH",
@@ -432,10 +532,10 @@
    "bars_held": 3,
    "pnl": -2.59,
    "r_multiple": -1.0,
-   "balance": 1033.84
+   "balance": 999.09
   },
   {
-   "n": 21,
+   "n": 26,
    "dir": "SELL",
    "poi": "BULLISH",
    "trend": "BULLISH",
@@ -452,10 +552,10 @@
    "bars_held": 23,
    "pnl": 9.7,
    "r_multiple": 2.5,
-   "balance": 1043.54
+   "balance": 1008.79
   },
   {
-   "n": 22,
+   "n": 27,
    "dir": "BUY",
    "poi": "BEARISH",
    "trend": "BEARISH",
@@ -472,10 +572,10 @@
    "bars_held": 27,
    "pnl": 7.86,
    "r_multiple": 2.5,
-   "balance": 1051.4
+   "balance": 1016.64
   },
   {
-   "n": 23,
+   "n": 28,
    "dir": "SELL",
    "poi": "BULLISH",
    "trend": "BULLISH",
@@ -492,101 +592,121 @@
    "bars_held": 64,
    "pnl": 5.96,
    "r_multiple": 2.5,
-   "balance": 1057.36
+   "balance": 1022.6
   }
  ],
  "equity": [
   {
+   "time": "2026-06-18 03:23:00",
+   "balance": 993.49
+  },
+  {
+   "time": "2026-06-18 10:00:00",
+   "balance": 985.76
+  },
+  {
+   "time": "2026-06-19 06:30:00",
+   "balance": 999.37
+  },
+  {
+   "time": "2026-06-19 20:47:00",
+   "balance": 993.26
+  },
+  {
+   "time": "2026-06-22 11:06:00",
+   "balance": 984.29
+  },
+  {
+   "time": "2026-06-29 17:03:00",
+   "balance": 979.06
+  },
+  {
+   "time": "2026-07-03 17:01:00",
+   "balance": 973.78
+  },
+  {
+   "time": "2026-07-09 13:51:00",
+   "balance": 960.77
+  },
+  {
+   "time": "2026-07-11 00:19:00",
+   "balance": 967.15
+  },
+  {
+   "time": "2026-07-13 07:28:00",
+   "balance": 984.2
+  },
+  {
    "time": "2026-07-14 06:34:00",
-   "balance": 997.1
+   "balance": 981.3
   },
   {
    "time": "2026-07-14 10:44:00",
-   "balance": 992.11
+   "balance": 976.31
   },
   {
    "time": "2026-07-15 02:29:00",
-   "balance": 1011.57
+   "balance": 995.77
   },
   {
    "time": "2026-07-16 05:33:00",
-   "balance": 1028.54
-  },
-  {
-   "time": "2026-07-19 18:31:00",
-   "balance": 1024.73
-  },
-  {
-   "time": "2026-07-19 22:01:00",
-   "balance": 1034.15
+   "balance": 1012.74
   },
   {
    "time": "2026-07-20 15:10:00",
-   "balance": 1058.62
+   "balance": 1037.21
   },
   {
    "time": "2026-07-28 15:03:00",
-   "balance": 1052.31
+   "balance": 1030.89
   },
   {
    "time": "2026-07-28 19:46:00",
-   "balance": 1047.17
+   "balance": 1025.75
   },
   {
    "time": "2026-07-30 08:27:00",
-   "balance": 1040.08
+   "balance": 1018.66
   },
   {
    "time": "2026-07-30 22:08:00",
-   "balance": 1035.61
-  },
-  {
-   "time": "2026-08-02 17:24:00",
-   "balance": 1032.05
-  },
-  {
-   "time": "2026-08-03 01:26:00",
-   "balance": 1051.16
+   "balance": 1014.2
   },
   {
    "time": "2026-08-04 13:36:00",
-   "balance": 1045.52
+   "balance": 1008.56
   },
   {
    "time": "2026-08-04 23:07:00",
-   "balance": 1041.17
+   "balance": 1004.21
   },
   {
    "time": "2026-08-05 05:02:00",
-   "balance": 1036.99
+   "balance": 1000.03
   },
   {
    "time": "2026-08-06 06:13:00",
-   "balance": 1042.71
+   "balance": 1005.75
   },
   {
    "time": "2026-08-06 07:14:00",
-   "balance": 1038.64
-  },
-  {
-   "time": "2026-08-08 00:45:00",
-   "balance": 1036.43
+   "balance": 1001.68
   },
   {
    "time": "2026-08-10 21:43:00",
-   "balance": 1033.84
+   "balance": 999.09
   },
   {
    "time": "2026-08-11 13:31:00",
-   "balance": 1043.54
+   "balance": 1008.79
   },
   {
    "time": "2026-08-13 00:09:00",
-   "balance": 1051.4
+   "balance": 1016.64
   },
   {
    "time": "2026-08-17 09:37:00",
-   "balance": 1057.36
+   "balance": 1022.6
   }
  ]
 }

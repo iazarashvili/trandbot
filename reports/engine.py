@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import (  # noqa: E402
     HTF, HTF_CANDLES_LOOKBACK, LTF, LTF_CANDLES_LOOKBACK, MAX_LTF_WAIT_CANDLES,
-    SYMBOL, TREND_EMA_PERIOD, USE_TREND_FILTER,
+    SKIP_WEEKENDS, SYMBOL, TREND_EMA_PERIOD, USE_TREND_FILTER,
 )
 from strategy import SMCStrategy  # noqa: E402
 
@@ -42,8 +42,8 @@ CACHE = HERE / "_history.pkl"
 
 START_BALANCE = 1000.0
 VOLUME = 0.05
-M1_BARS = 50_000
-M15_BARS = 6_000
+M1_BARS = 135_000   # ~90 days of 1m data (3 months)
+M15_BARS = 18_000   # ~90 days of 15m data
 
 
 # ---------------------------------------------------------------- data
@@ -115,6 +115,9 @@ def run(m1, m15, contract, point, rrr=3.0, invert=False,
     position = None
     t_start = _time.time()
 
+    # Pre-compute weekend mask (Saturday=5, Sunday=6) so the inner loop is cheap.
+    _weekdays = pd.to_datetime(m1["time"]).dt.weekday.to_numpy()
+
     for t in range(start, len(m1) - 1):
         if progress and t % 10000 == 0:
             print(f"  ... {t}/{len(m1)} ({_time.time()-t_start:.0f}s, {len(trades)} trades)")
@@ -147,6 +150,10 @@ def run(m1, m15, contract, point, rrr=3.0, invert=False,
                 position, watch_key, abandoned = None, None, False
                 if balance <= 0:
                     break
+            continue
+
+        # ---- weekend filter: no new entries on Saturday/Sunday ----
+        if SKIP_WEEKENDS and _weekdays[t] >= 5:
             continue
 
         # ---- ablation: no 15m zone at all, just the 1m trigger ----
