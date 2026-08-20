@@ -338,6 +338,13 @@ class SMCStrategy:
             last_close = float(window.iloc[-1]["close"])
             return (last_close - atr * buffer_atr) if bullish else (last_close + atr * buffer_atr)
 
+        if stop_mode == "ob":
+            # Stop just beyond the OB zone boundary + small ATR buffer
+            buffer = atr * buffer_atr
+            if bullish:
+                return float(poi.bottom) - buffer
+            return float(poi.top) + buffer
+
         buffer = atr * buffer_atr
 
         if bullish:

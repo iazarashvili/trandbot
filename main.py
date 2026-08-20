@@ -22,6 +22,7 @@ from config import (
     LTF_CANDLES_LOOKBACK,
     MAGIC_NUMBER,
     MAX_LTF_WAIT_CANDLES,
+    MAX_RISK_PCT,
     MAX_RISK_USD,
     MAX_SPREAD_POINTS,
     MIN_RRR_LIQUIDITY,
@@ -204,7 +205,18 @@ def place_order(connector: MT5Connector, setup: dict,
         return False
 
     risk_usd = risk * LOT_SIZE
-    if MAX_RISK_USD > 0 and risk_usd > MAX_RISK_USD:
+    # Percentage-based risk cap (uses account balance)
+    if MAX_RISK_PCT > 0:
+        account = mt5.account_info()
+        if account:
+            max_allowed = account.balance * MAX_RISK_PCT / 100
+            if risk_usd > max_allowed:
+                logger.warning(
+                    "🚫 Risk $%.2f exceeds %.1f%% of balance ($%.2f) — skipping.",
+                    risk_usd, MAX_RISK_PCT, max_allowed)
+                return False
+    # Hard dollar cap fallback
+    elif MAX_RISK_USD > 0 and risk_usd > MAX_RISK_USD:
         logger.warning(
             "🚫 Risk $%.2f exceeds MAX_RISK_USD $%.0f — skipping entry.",
             risk_usd, MAX_RISK_USD)
@@ -225,10 +237,9 @@ def place_order(connector: MT5Connector, setup: dict,
                     "🎯 TP at 15m liquidity level %.2f (%.1fR from entry).",
                     tp, liq_rrr)
             else:
-                logger.warning(
-                    "🚫 Nearest liquidity %.2f is only %.2fR — below MIN_RRR %.1f, skipping.",
-                    liq, liq_rrr, MIN_RRR_LIQUIDITY)
-                return False
+                logger.info(
+                    "🎯 Nearest liquidity %.2f is only %.2fR — using fixed RRR.",
+                    liq, liq_rrr)
 
     if tp is None:
         tp = price + risk * RRR if order_type == mt5.ORDER_TYPE_BUY else price - risk * RRR
@@ -412,7 +423,43 @@ def run_cycle(connector: MT5Connector, watch: PoiWatch) -> None:
 
 
 def main() -> None:
-    connector = MT5Connector(symbol=SYMBOL, magic_number=MAGIC_NUMBER)
+    import argparse
+    import importlib
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--symbol", type=str, default=None,
+                    help="Override SYMBOL from config (e.g. XAUUSD)")
+    ap.add_argument("--config", type=str, default=None,
+                    help="Symbol-specific config module (e.g. config_xauusd)")
+    args = ap.parse_args()
+
+    # Load symbol-specific config if provided
+    if args.config:
+        cfg = importlib.import_module(args.config)
+    elif args.symbol and args.symbol != SYMBOL:
+        try:
+            cfg = importlib.import_module(f"config_{args.symbol.lower()}")
+        except ModuleNotFoundError:
+            cfg = None
+    else:
+        cfg = None
+
+    # Pull values from symbol config or defaults
+    if cfg:
+        symbol = getattr(cfg, "SYMBOL", SYMBOL)
+        magic = getattr(cfg, "MAGIC_NUMBER", MAGIC_NUMBER)
+        # Update globals used by this module
+        global LOT_SIZE, MAX_RISK_USD, MAX_RISK_PCT, NIGHT_START_HOUR, NIGHT_END_HOUR
+        LOT_SIZE = getattr(cfg, "LOT_SIZE", LOT_SIZE)
+        MAX_RISK_USD = getattr(cfg, "MAX_RISK_USD", MAX_RISK_USD)
+        MAX_RISK_PCT = getattr(cfg, "MAX_RISK_PCT", MAX_RISK_PCT)
+        NIGHT_START_HOUR = getattr(cfg, "NIGHT_START_HOUR", NIGHT_START_HOUR)
+        NIGHT_END_HOUR = getattr(cfg, "NIGHT_END_HOUR", NIGHT_END_HOUR)
+        logger.info("Loaded config: %s", args.config or f"config_{symbol.lower()}")
+    else:
+        symbol = args.symbol or SYMBOL
+        magic = MAGIC_NUMBER
+
+    connector = MT5Connector(symbol=symbol, magic_number=magic)
     if not connector.initialize():
         return
 
@@ -424,7 +471,7 @@ def main() -> None:
     logger.info(
         "Target: %s | Size: %s | RRR: 1:%s | Trend Filter: %s (%s EMA) | "
         "Break-even: %s",
-        SYMBOL,
+        symbol,
         sizing,
         RRR,
         USE_TREND_FILTER,

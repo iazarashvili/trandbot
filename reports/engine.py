@@ -33,9 +33,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import (  # noqa: E402
     HTF, HTF_CANDLES_LOOKBACK, LTF, LTF_CANDLES_LOOKBACK, MAX_LTF_WAIT_CANDLES,
-    NIGHT_END_HOUR, NIGHT_START_HOUR,
+    MAX_RISK_PCT, MAX_RISK_USD, NIGHT_END_HOUR, NIGHT_START_HOUR,
     PARTIAL_CLOSE_PCT, PARTIAL_TRIGGER_PCT,
-    SKIP_WEEKENDS, SYMBOL, TREND_EMA_PERIOD, USE_TREND_FILTER,
+    SKIP_WEEKENDS, STOP_MODE, SYMBOL, TREND_EMA_PERIOD, USE_TREND_FILTER,
     LIQUIDITY_TF, SWING_STRENGTH, MIN_RRR_LIQUIDITY,
 )
 from strategy import SMCStrategy  # noqa: E402
@@ -43,8 +43,8 @@ from strategy import SMCStrategy  # noqa: E402
 HERE = Path(__file__).resolve().parent
 CACHE = HERE / "_history.pkl"
 
-START_BALANCE = 300.0
-VOLUME = 0.05
+START_BALANCE = 100_000.0
+VOLUME = 1.0
 M5_BARS = 100_000    # ~11 months of 5m data
 H1_BARS = 10_000     # ~13 months of 1h data
 M15_BARS = 50_000    # ~6 months of 15m data (for liquidity levels)
@@ -89,7 +89,7 @@ _HTF_CACHE = {}
 
 def run(m5, h1, m15_liq, contract, point, rrr=3.0, invert=False,
         one_shot_per_zone=False, no_poi=False, no_trend=False,
-        stop_mode="window", buffer_atr=0.5, use_liq_tp=True,
+        stop_mode=None, buffer_atr=0.5, use_liq_tp=True,
         breakeven_r=0.0, use_partial=True, progress=False):
     """Replays the strategy bar by bar and returns {summary, trades, equity}.
 
@@ -98,6 +98,8 @@ def run(m5, h1, m15_liq, contract, point, rrr=3.0, invert=False,
     use_partial: at 80% of TP, close 80% of position, move SL to entry,
                  move TP to next liquidity level.
     """
+    if stop_mode is None:
+        stop_mode = STOP_MODE
     from strategy import ZonePOI
     any_zones = (ZonePOI(type="BULLISH", top=1e12, bottom=-1e12),
                  ZonePOI(type="BEARISH", top=1e12, bottom=-1e12))
@@ -246,7 +248,7 @@ def run(m5, h1, m15_liq, contract, point, rrr=3.0, invert=False,
             m15_slice = m15_liq.iloc[max(0, li - 200): li + 1] if use_liq_tp and li >= 0 else None
             position = _open(setup, invert, rrr, o, spread, t + 1, times,
                              trend, "ANY", zone, len(trades), contract,
-                             m15_slice=m15_slice)
+                             m15_slice=m15_slice, balance=balance)
             continue
 
         # ---- refresh the HTF view once per closed H1 bar ----
@@ -306,7 +308,7 @@ def run(m5, h1, m15_liq, contract, point, rrr=3.0, invert=False,
 
         position = _open(setup, invert, rrr, o, spread, t + 1, times, trend,
                          poi.type, zone, len(trades), contract,
-                         m15_slice=m15_slice)
+                         m15_slice=m15_slice, balance=balance)
 
     for tr in trades:
         tr.pop("zone", None)
@@ -315,7 +317,7 @@ def run(m5, h1, m15_liq, contract, point, rrr=3.0, invert=False,
 
 
 def _open(setup, invert, rrr, o, spread, nt, times, trend, poi_type, zone,
-          n_done, contract, m15_slice=None):
+          n_done, contract, m15_slice=None, balance=None):
     """Turns a confirmed setup into a position filled at bar `nt`'s open."""
     if invert:
         setup = SMCStrategy.invert(setup, rrr)
@@ -324,6 +326,15 @@ def _open(setup, invert, rrr, o, spread, nt, times, trend, poi_type, zone,
     sl = setup["sl"]
     risk = abs(entry - sl)
     if risk <= 0:
+        return None
+
+    # Risk cap
+    risk_usd = risk * VOLUME * contract
+    if MAX_RISK_PCT > 0 and balance is not None:
+        max_allowed = balance * MAX_RISK_PCT / 100
+        if risk_usd > max_allowed:
+            return None
+    elif MAX_RISK_USD > 0 and risk_usd > MAX_RISK_USD:
         return None
 
     # Try liquidity-based TP first
@@ -339,9 +350,7 @@ def _open(setup, invert, rrr, o, spread, nt, times, trend, poi_type, zone,
             if liq_rrr >= MIN_RRR_LIQUIDITY:
                 tp = liq
                 tp_source = "liquidity"
-            # If liq_rrr < MIN_RRR_LIQUIDITY, skip the trade
-            else:
-                return None
+            # Liquidity too close — fall through to fixed RRR
 
     if tp is None:
         tp = entry + risk * rrr if setup["direction"] == "BUY" else entry - risk * rrr

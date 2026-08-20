@@ -84,7 +84,7 @@ RRR: float = 3.0
 # The structural rules are more defensible in theory and measurably worse
 # here: the bot is fading its own signal, so a tighter stop on the fade side
 # is simply hit more often.  Keeping "window" on the evidence.
-STOP_MODE: str = "window"  # "window" | "swing" | "zone"
+STOP_MODE: str = "window"  # "window" | "ob" | "swing" | "zone"
 STOP_BUFFER_ATR: float = 0.5  # wick buffer for "swing"/"zone", in 1m ATRs
 MAX_LTF_WAIT_CANDLES: int = 15  # Max 1m candles to wait for MSS after HTF touch
 
@@ -157,9 +157,13 @@ BREAKEVEN_TRIGGER_R: float = 1.0
 # Partial close.  When price reaches PARTIAL_TRIGGER_PCT of the TP distance,
 # close PARTIAL_CLOSE_PCT of the position, move stop to entry, and shift TP
 # to the next liquidity level beyond the original TP.
-# Maximum risk per trade in USD.  If the stop distance × lot size exceeds
-# this, the trade is skipped.  0 disables the filter.
-MAX_RISK_USD: float = 80.0
+# Maximum risk per trade.  Two modes:
+#   MAX_RISK_PCT > 0  →  risk capped at this % of account balance (preferred)
+#   MAX_RISK_USD > 0  →  hard dollar cap (fallback if PCT is 0)
+#   Both 0             →  no cap
+# 0.5% tested on XAUUSD: passes 63% of trades, cuts outsized stops.
+MAX_RISK_PCT: float = 0.0    # % of account balance (0 = disabled)
+MAX_RISK_USD: float = 80.0   # hard dollar cap (0 = disabled)
 
 USE_PARTIAL_CLOSE: bool = True
 PARTIAL_TRIGGER_PCT: float = 0.80   # 80% of TP distance
