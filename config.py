@@ -98,7 +98,7 @@ USE_CLOSED_CANDLES_ONLY: bool = True
 #
 # Set to False to go back to trading the signals as generated — that single
 # change is the whole revert.  See [[invert-signals-experiment]] in memory.
-INVERT_SIGNALS: bool = True
+INVERT_SIGNALS: bool = False
 
 # System Loop Interval (seconds)
 POLL_INTERVAL: int = 10
