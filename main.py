@@ -22,6 +22,7 @@ from config import (
     LTF_CANDLES_LOOKBACK,
     MAGIC_NUMBER,
     MAX_LTF_WAIT_CANDLES,
+    MAX_RISK_USD,
     MAX_SPREAD_POINTS,
     MIN_RRR_LIQUIDITY,
     PARTIAL_CLOSE_PCT,
@@ -200,6 +201,13 @@ def place_order(connector: MT5Connector, setup: dict,
             price,
             setup["sl"],
         )
+        return False
+
+    risk_usd = risk * LOT_SIZE
+    if MAX_RISK_USD > 0 and risk_usd > MAX_RISK_USD:
+        logger.warning(
+            "🚫 Risk $%.2f exceeds MAX_RISK_USD $%.0f — skipping entry.",
+            risk_usd, MAX_RISK_USD)
         return False
 
     # Try liquidity-based TP first, fall back to fixed RRR.

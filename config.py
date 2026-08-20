@@ -116,8 +116,8 @@ SKIP_WEEKENDS: bool = True
 # Open positions are still managed (SL/TP will fire normally).
 # Disabled: backtested on 11 months — per-trade expR improved but total profit
 # halved because 17 trades were removed.  Not worth it.
-NIGHT_START_HOUR: int = 0    # 0 = disabled (same start and end)
-NIGHT_END_HOUR: int = 0
+NIGHT_START_HOUR: int = 20
+NIGHT_END_HOUR: int = 23
 
 # Liquidity-based take profit.  Instead of a fixed RRR target, the TP is
 # placed at the nearest swing high/low (liquidity pool) on the 15m chart.
@@ -157,6 +157,10 @@ BREAKEVEN_TRIGGER_R: float = 1.0
 # Partial close.  When price reaches PARTIAL_TRIGGER_PCT of the TP distance,
 # close PARTIAL_CLOSE_PCT of the position, move stop to entry, and shift TP
 # to the next liquidity level beyond the original TP.
+# Maximum risk per trade in USD.  If the stop distance × lot size exceeds
+# this, the trade is skipped.  0 disables the filter.
+MAX_RISK_USD: float = 80.0
+
 USE_PARTIAL_CLOSE: bool = True
 PARTIAL_TRIGGER_PCT: float = 0.80   # 80% of TP distance
 PARTIAL_CLOSE_PCT: float = 0.80     # close 80% of position size

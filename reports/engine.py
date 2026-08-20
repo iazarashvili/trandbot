@@ -43,8 +43,8 @@ from strategy import SMCStrategy  # noqa: E402
 HERE = Path(__file__).resolve().parent
 CACHE = HERE / "_history.pkl"
 
-START_BALANCE = 1000.0
-VOLUME = 0.5
+START_BALANCE = 300.0
+VOLUME = 0.05
 M5_BARS = 100_000    # ~11 months of 5m data
 H1_BARS = 10_000     # ~13 months of 1h data
 M15_BARS = 50_000    # ~6 months of 15m data (for liquidity levels)
