@@ -60,9 +60,11 @@ LOT_SIZE: float = 0.01
 MAGIC_NUMBER: int = 100200
 DEVIATION: int = 20  # max slippage in points accepted on a market order
 
-# Timeframes
-HTF: int = mt5.TIMEFRAME_M15
-LTF: int = mt5.TIMEFRAME_M1
+# Timeframes — 1H OB zone, 5m displacement+FVG confirmation.
+# Changed from M15/M1 on 2026-08-20: the user's manual approach uses 1H zones
+# with 5m entry, and the bot hadn't fired in two days on the old timeframes.
+HTF: int = mt5.TIMEFRAME_H1
+LTF: int = mt5.TIMEFRAME_M5
 
 # Strategy Parameters
 HTF_CANDLES_LOOKBACK: int = 200
@@ -73,7 +75,7 @@ LTF_CANDLES_LOOKBACK: int = 100
 # standard error on expectancy is about ±0.35R, so every value in the sweep
 # sits inside one error bar of every other.  2.5 is a reasonable pick, not a
 # measured optimum.  See reports/sweep_rrr.json.
-RRR: float = 2.5
+RRR: float = 3.0
 
 # Stop placement.  Measured on the same data (reports/stop_rules.json):
 #   "window"  extreme of the last 10 M1 candles — expR +0.370  <- best
@@ -96,7 +98,7 @@ USE_CLOSED_CANDLES_ONLY: bool = True
 #
 # Set to False to go back to trading the signals as generated — that single
 # change is the whole revert.  See [[invert-signals-experiment]] in memory.
-INVERT_SIGNALS: bool = False
+INVERT_SIGNALS: bool = True
 
 # System Loop Interval (seconds)
 POLL_INTERVAL: int = 10
@@ -109,6 +111,22 @@ TREND_EMA_PERIOD: int = 100  # EMA period used to define the macro trend
 # thin and choppy.  Backtested on 70 days (2026-06 to 2026-08): keeping this
 # True improved expectancy.  Saturday = 5, Sunday = 6 in Python's weekday().
 SKIP_WEEKENDS: bool = True
+
+# Night filter.  No new entries between these UTC hours.
+# Open positions are still managed (SL/TP will fire normally).
+# Disabled: backtested on 11 months — per-trade expR improved but total profit
+# halved because 17 trades were removed.  Not worth it.
+NIGHT_START_HOUR: int = 0    # 0 = disabled (same start and end)
+NIGHT_END_HOUR: int = 0
+
+# Liquidity-based take profit.  Instead of a fixed RRR target, the TP is
+# placed at the nearest swing high/low (liquidity pool) on the 15m chart.
+# MIN_RRR_LIQUIDITY: skip the trade if the liquidity level is closer than
+# this many R from entry — too little reward for the risk.
+LIQUIDITY_TF: int = mt5.TIMEFRAME_M15
+LIQUIDITY_CANDLES: int = 200       # how many 15m candles to scan for swings
+SWING_STRENGTH: int = 3            # candles each side to confirm a swing point
+MIN_RRR_LIQUIDITY: float = 0.5     # minimum R:R to take the trade
 
 # ==========================================
 # Risk Management
@@ -135,3 +153,10 @@ MAX_SPREAD_POINTS: int = 0
 # Move the stop loss to break-even once the trade is this many R in profit.
 USE_BREAKEVEN: bool = False
 BREAKEVEN_TRIGGER_R: float = 1.0
+
+# Partial close.  When price reaches PARTIAL_TRIGGER_PCT of the TP distance,
+# close PARTIAL_CLOSE_PCT of the position, move stop to entry, and shift TP
+# to the next liquidity level beyond the original TP.
+USE_PARTIAL_CLOSE: bool = True
+PARTIAL_TRIGGER_PCT: float = 0.80   # 80% of TP distance
+PARTIAL_CLOSE_PCT: float = 0.80     # close 80% of position size

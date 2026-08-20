@@ -366,6 +366,70 @@ class MT5Connector:
         logger.info("Position #%s stop loss moved to %s.", position.ticket, new_sl)
         return True
 
+    def modify_position_sl_tp(self, position, new_sl: float, new_tp: float) -> bool:
+        """Moves an open position's stop loss and take profit."""
+        request = {
+            "action": mt5.TRADE_ACTION_SLTP,
+            "symbol": self.symbol,
+            "position": position.ticket,
+            "sl": self.normalize_price(new_sl),
+            "tp": self.normalize_price(new_tp),
+            "magic": self.magic_number,
+        }
+        result = mt5.order_send(request)
+        if result is None:
+            logger.error("SL/TP modify returned None: %s", mt5.last_error())
+            return False
+        if result.retcode != RETCODE_DONE:
+            logger.error(
+                "SL/TP modify failed on #%s! Retcode: %s, Comment: %s",
+                position.ticket, result.retcode, result.comment,
+            )
+            return False
+        logger.info("Position #%s SL→%s TP→%s.", position.ticket, new_sl, new_tp)
+        return True
+
+    def partial_close(self, position, close_volume: float) -> bool:
+        """Closes part of an open position."""
+        vol = self.normalize_volume(close_volume)
+        if vol is None or vol <= 0:
+            logger.error("Cannot normalize partial close volume %s.", close_volume)
+            return False
+
+        # Opposite order type to close
+        close_type = (mt5.ORDER_TYPE_SELL if position.type == mt5.POSITION_TYPE_BUY
+                      else mt5.ORDER_TYPE_BUY)
+        price = self.entry_price(close_type)
+        if price is None:
+            logger.error("No price for partial close.")
+            return False
+
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": self.symbol,
+            "volume": vol,
+            "type": close_type,
+            "position": position.ticket,
+            "price": price,
+            "deviation": DEVIATION,
+            "magic": self.magic_number,
+            "comment": "SMC_partial",
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": self._filling_mode(),
+        }
+        result = mt5.order_send(request)
+        if result is None:
+            logger.error("Partial close returned None: %s", mt5.last_error())
+            return False
+        if result.retcode not in (RETCODE_DONE, RETCODE_DONE_PARTIAL):
+            logger.error(
+                "Partial close failed on #%s! Retcode: %s, Comment: %s",
+                position.ticket, result.retcode, result.comment,
+            )
+            return False
+        logger.info("Partial close #%s: %.2f lots closed.", position.ticket, vol)
+        return True
+
     # ------------------------------------------------------------------
     # Order execution
     # ------------------------------------------------------------------

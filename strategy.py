@@ -5,8 +5,9 @@ strategy is unit-testable and back-testable offline.
 """
 
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
+import numpy as np
 import pandas as pd
 
 # Candles inspected on the LTF for the market structure shift and the stop.
@@ -25,7 +26,7 @@ class ZonePOI:
 
 
 class SMCStrategy:
-    """Implements 15m HTF POI + 1m LTF MSS & FVG execution logic."""
+    """Implements 1H HTF OB zone + 5m LTF displacement & FVG execution logic."""
 
     # ------------------------------------------------------------------
     # Helpers
@@ -223,6 +224,86 @@ class SMCStrategy:
         }
 
     # ------------------------------------------------------------------
+    # Liquidity levels (swing highs / swing lows)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def find_swing_levels(
+        df: pd.DataFrame,
+        strength: int = 3,
+        use_closed_candles: bool = True,
+    ) -> tuple[List[float], List[float]]:
+        """Returns (swing_highs, swing_lows) from a price DataFrame.
+
+        A swing high is a bar whose high is the highest of the surrounding
+        `strength` bars on each side.  Swing lows are the mirror.
+        """
+        data = SMCStrategy.closed_candles(df, use_closed_candles)
+        if len(data) < 2 * strength + 1:
+            return [], []
+
+        highs = data["high"].to_numpy(float)
+        lows = data["low"].to_numpy(float)
+        swing_highs: List[float] = []
+        swing_lows: List[float] = []
+
+        for i in range(strength, len(data) - strength):
+            if highs[i] == np.max(highs[i - strength: i + strength + 1]):
+                swing_highs.append(float(highs[i]))
+            if lows[i] == np.min(lows[i - strength: i + strength + 1]):
+                swing_lows.append(float(lows[i]))
+
+        return swing_highs, swing_lows
+
+    @staticmethod
+    def find_nearest_liquidity(
+        df: pd.DataFrame,
+        direction: str,
+        entry_price: float,
+        strength: int = 3,
+        use_closed_candles: bool = True,
+    ) -> Optional[float]:
+        """Finds the nearest liquidity target for a trade.
+
+        BUY  -> nearest swing high ABOVE entry (buyside liquidity)
+        SELL -> nearest swing low BELOW entry (sellside liquidity)
+        """
+        swing_highs, swing_lows = SMCStrategy.find_swing_levels(
+            df, strength, use_closed_candles)
+
+        if direction == "BUY":
+            above = [h for h in swing_highs if h > entry_price]
+            return min(above) if above else None
+
+        below = [l for l in swing_lows if l < entry_price]
+        return max(below) if below else None
+
+    @staticmethod
+    def find_next_liquidity(
+        df: pd.DataFrame,
+        direction: str,
+        beyond_price: float,
+        strength: int = 3,
+        use_closed_candles: bool = True,
+    ) -> Optional[float]:
+        """Finds the next liquidity level BEYOND a given price.
+
+        Used for the extended TP after partial close — the remaining runner
+        targets the next structural level past the original TP.
+
+        BUY  -> next swing high ABOVE beyond_price
+        SELL -> next swing low BELOW beyond_price
+        """
+        swing_highs, swing_lows = SMCStrategy.find_swing_levels(
+            df, strength, use_closed_candles)
+
+        if direction == "BUY":
+            above = [h for h in swing_highs if h > beyond_price]
+            return min(above) if above else None
+
+        below = [l for l in swing_lows if l < beyond_price]
+        return max(below) if below else None
+
+    # ------------------------------------------------------------------
     # LTF confirmation
     # ------------------------------------------------------------------
     @staticmethod
@@ -250,8 +331,13 @@ class SMCStrategy:
         if stop_mode == "window":
             return float(window["low"].min() if bullish else window["high"].max())
 
-        # Average 1m range over the lookback, used as the wick buffer.
+        # Average range over the lookback, used as the wick buffer and ATR stop.
         atr = float((window["high"] - window["low"]).mean())
+
+        if stop_mode == "atr":
+            last_close = float(window.iloc[-1]["close"])
+            return (last_close - atr * buffer_atr) if bullish else (last_close + atr * buffer_atr)
+
         buffer = atr * buffer_atr
 
         if bullish:
@@ -276,7 +362,7 @@ class SMCStrategy:
         stop_mode: str = "window",
         buffer_atr: float = 0.5,
     ) -> Optional[dict]:
-        """Checks for a 1m MSS + 1m FVG while price sits inside the HTF POI."""
+        """Checks for a displacement FVG while price sits inside the HTF OB zone."""
         df = SMCStrategy.closed_candles(df_ltf, use_closed_candles)
         if len(df) < _LTF_STRUCTURE_LOOKBACK:
             return None
@@ -290,9 +376,8 @@ class SMCStrategy:
             return None
 
         if poi.type == "BULLISH":
-            has_mss = signal["close"] > structure["high"].max()
-            has_1m_fvg = signal["low"] > fvg_first["high"]
-            if not (has_mss and has_1m_fvg):
+            has_fvg = signal["low"] > fvg_first["high"]
+            if not has_fvg:
                 return None
 
             entry_price = float(signal["close"])
@@ -310,9 +395,8 @@ class SMCStrategy:
             }
 
         if poi.type == "BEARISH":
-            has_mss = signal["close"] < structure["low"].min()
-            has_1m_fvg = signal["high"] < fvg_first["low"]
-            if not (has_mss and has_1m_fvg):
+            has_fvg = signal["high"] < fvg_first["low"]
+            if not has_fvg:
                 return None
 
             entry_price = float(signal["close"])

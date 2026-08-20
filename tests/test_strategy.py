@@ -194,9 +194,10 @@ class LtfConfirmationTest(unittest.TestCase):
         self.assertEqual(setup["sl"], 95)
         self.assertEqual(setup["tp"], 107 + (107 - 95) * 3)
 
-    def test_no_setup_without_a_structure_shift(self):
+    def test_no_setup_without_displacement_fvg(self):
         candles = list(BULLISH_LTF_CANDLES)
-        candles[-1] = (105, 108, 102, 99)  # closes back below the recent high
+        # Signal candle low touches fvg_first high — no gap, no displacement
+        candles[-1] = (100, 107, 97, 107)
         setup = SMCStrategy.check_ltf_confirmation(
             make_df(candles), self.poi, rrr=3.0, use_closed_candles=False
         )

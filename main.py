@@ -13,22 +13,31 @@ from config import (
     HTF,
     HTF_CANDLES_LOOKBACK,
     INVERT_SIGNALS,
+    LIQUIDITY_CANDLES,
+    LIQUIDITY_TF,
     LOT_SIZE,
+    NIGHT_END_HOUR,
+    NIGHT_START_HOUR,
     LTF,
     LTF_CANDLES_LOOKBACK,
     MAGIC_NUMBER,
     MAX_LTF_WAIT_CANDLES,
     MAX_SPREAD_POINTS,
+    MIN_RRR_LIQUIDITY,
+    PARTIAL_CLOSE_PCT,
+    PARTIAL_TRIGGER_PCT,
     POLL_INTERVAL,
     RISK_PERCENT,
     RRR,
     SKIP_WEEKENDS,
     STOP_BUFFER_ATR,
     STOP_MODE,
+    SWING_STRENGTH,
     SYMBOL,
     TREND_EMA_PERIOD,
     USE_BREAKEVEN,
     USE_CLOSED_CANDLES_ONLY,
+    USE_PARTIAL_CLOSE,
     USE_RISK_BASED_LOT,
     USE_TREND_FILTER,
 )
@@ -78,43 +87,83 @@ class PoiWatch:
 
 
 def manage_open_positions(connector: MT5Connector, positions: Sequence) -> None:
-    """Moves the stop to break-even once a position is far enough in profit."""
-    if not USE_BREAKEVEN or not positions:
-        return
-
+    """Manages open positions: breakeven stops and partial closes."""
     tick = connector.get_tick()
     if tick is None:
         return
 
     for position in positions:
-        if not position.sl:
+        if not position.sl or not position.tp:
             continue
 
-        risk = abs(position.price_open - position.sl)
+        entry = position.price_open
+        risk = abs(entry - position.sl)
         if risk <= 0:
             continue
-        target = risk * BREAKEVEN_TRIGGER_R
 
-        if position.type == mt5.POSITION_TYPE_BUY:
-            if position.sl >= position.price_open:
-                continue  # already at or beyond break-even
-            if tick.bid >= position.price_open + target:
+        is_buy = position.type == mt5.POSITION_TYPE_BUY
+        current = tick.bid if is_buy else tick.ask
+
+        # ---- Partial close at 80% of TP ----
+        already_runner = (position.sl >= entry - 0.01 if is_buy
+                          else position.sl <= entry + 0.01)
+        if USE_PARTIAL_CLOSE and not already_runner:
+            tp_dist = abs(position.tp - entry)
+            trigger_price = (entry + tp_dist * PARTIAL_TRIGGER_PCT if is_buy
+                             else entry - tp_dist * PARTIAL_TRIGGER_PCT)
+
+            triggered = (current >= trigger_price if is_buy
+                         else current <= trigger_price)
+
+            if triggered:
+                close_vol = position.volume * PARTIAL_CLOSE_PCT
                 logger.info(
-                    "🛡️ Position #%s reached %.1fR — moving stop to break-even.",
-                    position.ticket,
-                    BREAKEVEN_TRIGGER_R,
-                )
-                connector.modify_position_sl(position, position.price_open)
-        else:
-            if position.sl <= position.price_open:
+                    "📊 Position #%s reached 80%% of TP — partial close %.2f lots.",
+                    position.ticket, close_vol)
+
+                if connector.partial_close(position, close_vol):
+                    # Find next liquidity level for the runner
+                    df_liq = connector.fetch_rates(LIQUIDITY_TF, LIQUIDITY_CANDLES)
+                    new_tp = position.tp  # fallback
+                    if df_liq is not None:
+                        direction = "BUY" if is_buy else "SELL"
+                        next_liq = SMCStrategy.find_next_liquidity(
+                            df_liq, direction, position.tp,
+                            strength=SWING_STRENGTH, use_closed_candles=True)
+                        if next_liq is not None:
+                            new_tp = next_liq
+                            logger.info(
+                                "🎯 Runner TP moved to next liquidity: %.2f", new_tp)
+                        else:
+                            logger.info(
+                                "🎯 No next liquidity found — keeping original TP.")
+
+                    # Move stop to entry, TP to next liquidity
+                    connector.modify_position_sl_tp(position, entry, new_tp)
+
+                    # Mark as runner so we don't partial close again
+                    # (MT5 keeps the same ticket after partial close)
+                    logger.info(
+                        "🏃 Runner: SL→%.2f (entry), TP→%.2f", entry, new_tp)
                 continue
-            if tick.ask <= position.price_open - target:
+
+        # ---- Breakeven stop (if enabled separately) ----
+        if USE_BREAKEVEN:
+            target = risk * BREAKEVEN_TRIGGER_R
+            at_or_beyond_be = (position.sl >= entry if is_buy
+                               else position.sl <= entry)
+            if at_or_beyond_be:
+                continue
+            if is_buy and current >= entry + target:
                 logger.info(
                     "🛡️ Position #%s reached %.1fR — moving stop to break-even.",
-                    position.ticket,
-                    BREAKEVEN_TRIGGER_R,
-                )
-                connector.modify_position_sl(position, position.price_open)
+                    position.ticket, BREAKEVEN_TRIGGER_R)
+                connector.modify_position_sl(position, entry)
+            elif not is_buy and current <= entry - target:
+                logger.info(
+                    "🛡️ Position #%s reached %.1fR — moving stop to break-even.",
+                    position.ticket, BREAKEVEN_TRIGGER_R)
+                connector.modify_position_sl(position, entry)
 
 
 def spread_is_acceptable(connector: MT5Connector) -> bool:
@@ -132,7 +181,8 @@ def spread_is_acceptable(connector: MT5Connector) -> bool:
     return True
 
 
-def place_order(connector: MT5Connector, setup: dict) -> bool:
+def place_order(connector: MT5Connector, setup: dict,
+                df_liq: Optional[pd.DataFrame] = None) -> bool:
     """Turns a confirmed setup into a live market order."""
     order_type = (
         mt5.ORDER_TYPE_BUY if setup["direction"] == "BUY" else mt5.ORDER_TYPE_SELL
@@ -143,8 +193,6 @@ def place_order(connector: MT5Connector, setup: dict) -> bool:
         logger.error("No live price available — skipping entry.")
         return False
 
-    # Re-anchor the target on the price we will actually pay, otherwise the
-    # configured RRR silently drifts with every tick since the signal candle.
     risk = abs(price - setup["sl"])
     if risk <= 0:
         logger.warning(
@@ -154,7 +202,30 @@ def place_order(connector: MT5Connector, setup: dict) -> bool:
         )
         return False
 
-    tp = price + risk * RRR if order_type == mt5.ORDER_TYPE_BUY else price - risk * RRR
+    # Try liquidity-based TP first, fall back to fixed RRR.
+    tp = None
+    if df_liq is not None:
+        liq = SMCStrategy.find_nearest_liquidity(
+            df_liq, setup["direction"], price,
+            strength=SWING_STRENGTH, use_closed_candles=True)
+        if liq is not None:
+            liq_dist = abs(liq - price)
+            liq_rrr = liq_dist / risk if risk > 0 else 0
+            if liq_rrr >= MIN_RRR_LIQUIDITY:
+                tp = liq
+                logger.info(
+                    "🎯 TP at 15m liquidity level %.2f (%.1fR from entry).",
+                    tp, liq_rrr)
+            else:
+                logger.warning(
+                    "🚫 Nearest liquidity %.2f is only %.2fR — below MIN_RRR %.1f, skipping.",
+                    liq, liq_rrr, MIN_RRR_LIQUIDITY)
+                return False
+
+    if tp is None:
+        tp = price + risk * RRR if order_type == mt5.ORDER_TYPE_BUY else price - risk * RRR
+        logger.info("🎯 No liquidity level found — using fixed RRR %.1f, TP %.2f.", RRR, tp)
+
     levels = connector.normalize_levels(order_type, price, setup["sl"], tp)
 
     volume = LOT_SIZE
@@ -180,17 +251,25 @@ def place_order(connector: MT5Connector, setup: dict) -> bool:
 
 def run_cycle(connector: MT5Connector, watch: PoiWatch) -> None:
     """Executes one poll of the market. Raises nothing the caller must handle."""
-    # 0. Weekend filter — no new entries on Saturday/Sunday.
-    if SKIP_WEEKENDS:
-        import datetime
-        now = datetime.datetime.now(datetime.timezone.utc)
-        if now.weekday() >= 5:  # 5=Saturday, 6=Sunday
-            # Still manage open positions, but don't scan for new ones.
-            positions = connector.get_open_positions()
-            if positions:
-                manage_open_positions(connector, positions)
-            logger.info("📅 Weekend — skipping new entries (UTC %s).", now.strftime("%A"))
-            return
+    # 0. Weekend & night filter — no new entries outside trading hours.
+    import datetime
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    skip_reason = None
+    if SKIP_WEEKENDS and now.weekday() >= 5:
+        skip_reason = "Weekend (UTC %s)" % now.strftime("%A")
+    elif NIGHT_START_HOUR > NIGHT_END_HOUR:  # wraps midnight: e.g. 23-04
+        if now.hour >= NIGHT_START_HOUR or now.hour < NIGHT_END_HOUR:
+            skip_reason = "Night session (UTC %02d:%02d)" % (now.hour, now.minute)
+    elif NIGHT_START_HOUR <= now.hour < NIGHT_END_HOUR:
+        skip_reason = "Night session (UTC %02d:%02d)" % (now.hour, now.minute)
+
+    if skip_reason:
+        positions = connector.get_open_positions()
+        if positions:
+            manage_open_positions(connector, positions)
+        logger.info("🌙 %s — skipping new entries.", skip_reason)
+        return
 
     # 1. Existing positions take priority over new entries.
     positions = connector.get_open_positions()
@@ -233,7 +312,7 @@ def run_cycle(connector: MT5Connector, watch: PoiWatch) -> None:
     if poi is None:
         watch.leave()
         logger.info(
-            "🔍 Price: %.2f | Trend: %s | ❌ No active 15m POI (OB+FVG) found "
+            "🔍 Price: %.2f | Trend: %s | ❌ No active 1H POI (OB+FVG) found "
             "in trend direction.",
             current_price,
             trend,
@@ -243,7 +322,7 @@ def run_cycle(connector: MT5Connector, watch: PoiWatch) -> None:
     if not SMCStrategy.is_zone_in_play(poi, df_ltf, current_price=current_price):
         watch.leave()
         logger.info(
-            "🎯 15m POI Found (%s: %.2f - %.2f) | Price: %.2f | ⏳ Waiting for "
+            "🎯 1H POI Found (%s: %.2f - %.2f) | Price: %.2f | ⏳ Waiting for "
             "price to enter zone...",
             poi.type,
             poi.bottom,
@@ -258,7 +337,7 @@ def run_cycle(connector: MT5Connector, watch: PoiWatch) -> None:
 
     if watch.abandoned:
         logger.info(
-            "💤 15m %s zone abandoned after %s 1m candles without a shift.",
+            "💤 1H %s zone abandoned after %s 5m candles without FVG.",
             poi.type,
             MAX_LTF_WAIT_CANDLES,
         )
@@ -267,8 +346,8 @@ def run_cycle(connector: MT5Connector, watch: PoiWatch) -> None:
     if waited > MAX_LTF_WAIT_CANDLES:
         watch.abandoned = True
         logger.info(
-            "⌛ Giving up on the 15m %s zone: %s/%s 1m candles elapsed with no "
-            "MSS.",
+            "⌛ Giving up on the 1H %s zone: %s/%s 5m candles elapsed with no "
+            "FVG.",
             poi.type,
             waited,
             MAX_LTF_WAIT_CANDLES,
@@ -276,7 +355,7 @@ def run_cycle(connector: MT5Connector, watch: PoiWatch) -> None:
         return
 
     logger.info(
-        "⚡ Price inside 15m %s POI (%s/%s candles) — checking 1m for MSS + FVG...",
+        "⚡ Price inside 1H %s POI (%s/%s candles) — checking 5m for FVG...",
         poi.type,
         waited,
         MAX_LTF_WAIT_CANDLES,
@@ -292,7 +371,7 @@ def run_cycle(connector: MT5Connector, watch: PoiWatch) -> None:
         buffer_atr=STOP_BUFFER_ATR,
     )
     if setup is None:
-        logger.info("⌛ Inside 15m %s zone, but no 1m MSS/FVG confirmation yet.", poi.type)
+        logger.info("⌛ Inside 1H %s zone, but no 5m FVG confirmation yet.", poi.type)
         return
 
     if INVERT_SIGNALS:
@@ -316,7 +395,10 @@ def run_cycle(connector: MT5Connector, watch: PoiWatch) -> None:
     if not spread_is_acceptable(connector):
         return
 
-    if place_order(connector, setup):
+    # Fetch 15m data for liquidity-based TP.
+    df_liq = connector.fetch_rates(LIQUIDITY_TF, LIQUIDITY_CANDLES)
+
+    if place_order(connector, setup, df_liq=df_liq):
         logger.info("🎉 ORDER PLACED SUCCESSFULLY ON METATRADER 5!")
         watch.leave()
 

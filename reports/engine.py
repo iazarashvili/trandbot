@@ -33,7 +33,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import (  # noqa: E402
     HTF, HTF_CANDLES_LOOKBACK, LTF, LTF_CANDLES_LOOKBACK, MAX_LTF_WAIT_CANDLES,
+    NIGHT_END_HOUR, NIGHT_START_HOUR,
+    PARTIAL_CLOSE_PCT, PARTIAL_TRIGGER_PCT,
     SKIP_WEEKENDS, SYMBOL, TREND_EMA_PERIOD, USE_TREND_FILTER,
+    LIQUIDITY_TF, SWING_STRENGTH, MIN_RRR_LIQUIDITY,
 )
 from strategy import SMCStrategy  # noqa: E402
 
@@ -41,17 +44,20 @@ HERE = Path(__file__).resolve().parent
 CACHE = HERE / "_history.pkl"
 
 START_BALANCE = 1000.0
-VOLUME = 0.05
-M1_BARS = 135_000   # ~90 days of 1m data (3 months)
-M15_BARS = 18_000   # ~90 days of 15m data
+VOLUME = 0.5
+M5_BARS = 100_000    # ~11 months of 5m data
+H1_BARS = 10_000     # ~13 months of 1h data
+M15_BARS = 50_000    # ~6 months of 15m data (for liquidity levels)
 
 
 # ---------------------------------------------------------------- data
 def load_data(refresh: bool = False):
-    """Returns (m1, m15, contract_size, point), cached on disk after the first pull."""
+    """Returns (m5, h1, m15_liq, contract_size, point), cached on disk."""
     if CACHE.exists() and not refresh:
         blob = pd.read_pickle(CACHE)
-        return blob["m1"], blob["m15"], blob["contract"], blob["point"]
+        # Support old cache format gracefully
+        if "m5" in blob:
+            return blob["m5"], blob["h1"], blob["m15_liq"], blob["contract"], blob["point"]
 
     import MetaTrader5 as mt5
     from mt5_connector import MT5Connector
@@ -63,7 +69,8 @@ def load_data(refresh: bool = False):
     contract, point = info.trade_contract_size, info.point
 
     frames = {}
-    for key, tf, n in (("m1", LTF, M1_BARS), ("m15", HTF, M15_BARS)):
+    for key, tf, n in (("m5", LTF, M5_BARS), ("h1", HTF, H1_BARS),
+                        ("m15_liq", LIQUIDITY_TF, M15_BARS)):
         rates = mt5.copy_rates_from_pos(SYMBOL, tf, 0, n)
         df = pd.DataFrame(rates)
         df["time"] = pd.to_datetime(df["time"], unit="s")
@@ -71,40 +78,46 @@ def load_data(refresh: bool = False):
     c.shutdown()
 
     pd.to_pickle({**frames, "contract": contract, "point": point}, CACHE)
-    print(f"cached {len(frames['m1'])} M1 / {len(frames['m15'])} M15 bars -> {CACHE.name}")
-    return frames["m1"], frames["m15"], contract, point
+    print(f"cached {len(frames['m5'])} M5 / {len(frames['h1'])} H1 / "
+          f"{len(frames['m15_liq'])} M15 bars -> {CACHE.name}")
+    return frames["m5"], frames["h1"], frames["m15_liq"], contract, point
 
 
 # ---------------------------------------------------------------- engine
-# The HTF view depends only on which M15 bar has closed — never on RRR, on the
-# direction mode, or on whether a position is open. Caching it lets a parameter
-# sweep reuse one pass of the expensive backward scan across every run.
 _HTF_CACHE = {}
 
 
-def run(m1, m15, contract, point, rrr=3.0, invert=False,
+def run(m5, h1, m15_liq, contract, point, rrr=3.0, invert=False,
         one_shot_per_zone=False, no_poi=False, no_trend=False,
-        stop_mode="window", buffer_atr=0.5, progress=False):
+        stop_mode="window", buffer_atr=0.5, use_liq_tp=True,
+        breakeven_r=0.0, use_partial=True, progress=False):
     """Replays the strategy bar by bar and returns {summary, trades, equity}.
 
-    `no_poi` and `no_trend` are ablations: they strip the 15m zone layer and
-    the EMA trend filter respectively, to measure how much either contributes.
+    breakeven_r: move stop to entry once price reaches this many R in profit.
+                 0.0 disables the feature.
+    use_partial: at 80% of TP, close 80% of position, move SL to entry,
+                 move TP to next liquidity level.
     """
     from strategy import ZonePOI
     any_zones = (ZonePOI(type="BULLISH", top=1e12, bottom=-1e12),
                  ZonePOI(type="BEARISH", top=1e12, bottom=-1e12))
-    m15_t, m1_t = m15["time"].values, m1["time"].values
-    h_idx = np.searchsorted(m15_t, m1_t - np.timedelta64(15, "m"), side="right") - 1
 
-    o = m1["open"].to_numpy(float)
-    hi = m1["high"].to_numpy(float)
-    lo = m1["low"].to_numpy(float)
-    cl = m1["close"].to_numpy(float)
-    spread = m1["spread"].to_numpy(float) * point
-    times = m1["time"]
+    h1_t, m5_t = h1["time"].values, m5["time"].values
+    m15_t = m15_liq["time"].values
+    # Map each M5 bar to the last closed H1 bar
+    h_idx = np.searchsorted(h1_t, m5_t - np.timedelta64(60, "m"), side="right") - 1
+    # Map each M5 bar to the last closed M15 bar (for liquidity)
+    liq_idx = np.searchsorted(m15_t, m5_t - np.timedelta64(15, "m"), side="right") - 1
+
+    o = m5["open"].to_numpy(float)
+    hi = m5["high"].to_numpy(float)
+    lo = m5["low"].to_numpy(float)
+    cl = m5["close"].to_numpy(float)
+    spread = m5["spread"].to_numpy(float) * point
+    times = m5["time"]
 
     start = LTF_CANDLES_LOOKBACK
-    while start < len(m1) and h_idx[start] < HTF_CANDLES_LOOKBACK:
+    while start < len(m5) and h_idx[start] < HTF_CANDLES_LOOKBACK:
         start += 1
 
     trades, equity = [], []
@@ -115,16 +128,66 @@ def run(m1, m15, contract, point, rrr=3.0, invert=False,
     position = None
     t_start = _time.time()
 
-    # Pre-compute weekend mask (Saturday=5, Sunday=6) so the inner loop is cheap.
-    _weekdays = pd.to_datetime(m1["time"]).dt.weekday.to_numpy()
+    _weekdays = pd.to_datetime(m5["time"]).dt.weekday.to_numpy()
+    _hours = pd.to_datetime(m5["time"]).dt.hour.to_numpy()
 
-    for t in range(start, len(m1) - 1):
+    for t in range(start, len(m5) - 1):
         if progress and t % 10000 == 0:
-            print(f"  ... {t}/{len(m1)} ({_time.time()-t_start:.0f}s, {len(trades)} trades)")
+            print(f"  ... {t}/{len(m5)} ({_time.time()-t_start:.0f}s, {len(trades)} trades)")
 
         # ---- manage an open position ----
         if position is not None:
             p = position
+            vol = p.get("vol", VOLUME)
+
+            # Partial close: at 80% of TP distance, close 80%, SL→entry, TP→next liq
+            if use_partial and not p.get("partial_done"):
+                tp_dist = abs(p["tp"] - p["entry"])
+                trigger_dist = tp_dist * PARTIAL_TRIGGER_PCT
+                if p["dir"] == "BUY":
+                    triggered = hi[t] >= p["entry"] + trigger_dist
+                else:
+                    triggered = lo[t] + spread[t] <= p["entry"] - trigger_dist
+
+                if triggered:
+                    # Book profit on the closed portion
+                    close_vol = vol * PARTIAL_CLOSE_PCT
+                    remain_vol = vol - close_vol
+                    partial_px = (p["entry"] + trigger_dist if p["dir"] == "BUY"
+                                  else p["entry"] - trigger_dist)
+                    partial_pnl = ((partial_px - p["entry"]) if p["dir"] == "BUY"
+                                   else (p["entry"] - partial_px)) * close_vol * contract
+                    balance += partial_pnl
+                    p["partial_pnl"] = round(partial_pnl, 2)
+                    p["partial_done"] = True
+                    p["vol"] = remain_vol
+
+                    # Move SL to entry
+                    p["sl"] = p["entry"]
+
+                    # Move TP to next liquidity level
+                    li = liq_idx[t]
+                    if li >= 0:
+                        liq_slice = m15_liq.iloc[max(0, li - 200): li + 1]
+                        next_liq = SMCStrategy.find_next_liquidity(
+                            liq_slice, p["dir"], p["tp"],
+                            strength=SWING_STRENGTH, use_closed_candles=False)
+                        if next_liq is not None:
+                            p["tp"] = round(next_liq, 2)
+                            p["tp_extended"] = True
+
+            # Breakeven (standalone, if no partial close)
+            if breakeven_r > 0 and not p.get("be_moved") and not p.get("partial_done"):
+                trigger_dist = p["risk_px"] * breakeven_r
+                if p["dir"] == "BUY":
+                    if hi[t] >= p["entry"] + trigger_dist:
+                        p["sl"] = p["entry"]
+                        p["be_moved"] = True
+                else:
+                    if lo[t] + spread[t] <= p["entry"] - trigger_dist:
+                        p["sl"] = p["entry"]
+                        p["be_moved"] = True
+
             if p["dir"] == "BUY":
                 hit_sl, hit_tp = lo[t] <= p["sl"], hi[t] >= p["tp"]
             else:
@@ -133,14 +196,16 @@ def run(m1, m15, contract, point, rrr=3.0, invert=False,
 
             if hit_sl or hit_tp:
                 exit_px = p["sl"] if hit_sl else p["tp"]
-                pnl = ((exit_px - p["entry"]) if p["dir"] == "BUY"
-                       else (p["entry"] - exit_px)) * VOLUME * contract
-                balance += pnl
+                remaining_pnl = ((exit_px - p["entry"]) if p["dir"] == "BUY"
+                                 else (p["entry"] - exit_px)) * vol * contract
+                balance += remaining_pnl
+                total_pnl = remaining_pnl + p.get("partial_pnl", 0)
                 p.update(
                     exit_time=str(times.iloc[t]), exit_price=round(exit_px, 2),
                     exit_reason="SL" if hit_sl else "TP",
-                    bars_held=t - p.pop("entry_bar"), pnl=round(pnl, 2),
-                    r_multiple=round(pnl / p["risk_usd"], 2) if p["risk_usd"] else 0,
+                    bars_held=t - p.pop("entry_bar"),
+                    pnl=round(total_pnl, 2),
+                    r_multiple=round(total_pnl / p["risk_usd"], 2) if p["risk_usd"] else 0,
                     balance=round(balance, 2),
                 )
                 if hit_sl and one_shot_per_zone:
@@ -152,13 +217,19 @@ def run(m1, m15, contract, point, rrr=3.0, invert=False,
                     break
             continue
 
-        # ---- weekend filter: no new entries on Saturday/Sunday ----
+        # ---- weekend & night filter ----
         if SKIP_WEEKENDS and _weekdays[t] >= 5:
             continue
+        h = _hours[t]
+        if NIGHT_START_HOUR > NIGHT_END_HOUR:
+            if h >= NIGHT_START_HOUR or h < NIGHT_END_HOUR:
+                continue
+        elif NIGHT_START_HOUR <= h < NIGHT_END_HOUR:
+            continue
 
-        # ---- ablation: no 15m zone at all, just the 1m trigger ----
+        # ---- ablation: no HTF zone, just the LTF trigger ----
         if no_poi:
-            ltf = m1.iloc[t - LTF_CANDLES_LOOKBACK + 1: t + 1]
+            ltf = m5.iloc[t - LTF_CANDLES_LOOKBACK + 1: t + 1]
             setup = None
             for z in any_zones:
                 setup = SMCStrategy.check_ltf_confirmation(
@@ -170,11 +241,15 @@ def run(m1, m15, contract, point, rrr=3.0, invert=False,
                 continue
             zone = ("ANY", 0.0, 0.0)
             trend = "NEUTRAL"
+            # Build M15 slice for liquidity
+            li = liq_idx[t]
+            m15_slice = m15_liq.iloc[max(0, li - 200): li + 1] if use_liq_tp and li >= 0 else None
             position = _open(setup, invert, rrr, o, spread, t + 1, times,
-                             trend, "ANY", zone, len(trades), contract)
+                             trend, "ANY", zone, len(trades), contract,
+                             m15_slice=m15_slice)
             continue
 
-        # ---- refresh the HTF view once per closed M15 bar ----
+        # ---- refresh the HTF view once per closed H1 bar ----
         if h_idx[t] != poi_h:
             poi_h = h_idx[t]
             use_trend = USE_TREND_FILTER and not no_trend
@@ -182,12 +257,12 @@ def run(m1, m15, contract, point, rrr=3.0, invert=False,
             if ck in _HTF_CACHE:
                 trend, poi = _HTF_CACHE[ck]
             else:
-                w15 = m15.iloc[max(0, poi_h - HTF_CANDLES_LOOKBACK + 1): poi_h + 1]
-                trend = (SMCStrategy.get_htf_trend(w15, TREND_EMA_PERIOD,
+                wh = h1.iloc[max(0, poi_h - HTF_CANDLES_LOOKBACK + 1): poi_h + 1]
+                trend = (SMCStrategy.get_htf_trend(wh, TREND_EMA_PERIOD,
                                                    use_closed_candles=False)
                          if use_trend else "NEUTRAL")
                 poi = SMCStrategy.detect_htf_poi(
-                    w15, use_trend_filter=use_trend,
+                    wh, use_trend_filter=use_trend,
                     ema_period=TREND_EMA_PERIOD, use_closed_candles=False)
                 _HTF_CACHE[ck] = (trend, poi)
             if poi is None:
@@ -200,15 +275,13 @@ def run(m1, m15, contract, point, rrr=3.0, invert=False,
         if zone in dead_zones:
             continue
 
-        # Cheap scalar pre-filter — the authoritative check is is_zone_in_play
-        # below; this only avoids building a DataFrame slice 50k times.
         mid = cl[t] + spread[t] / 2.0
         if not (poi.bottom <= mid <= poi.top
                 or (lo[t] <= poi.top and hi[t] >= poi.bottom)):
             watch_key, abandoned = None, False
             continue
 
-        ltf = m1.iloc[t - LTF_CANDLES_LOOKBACK + 1: t + 1]
+        ltf = m5.iloc[t - LTF_CANDLES_LOOKBACK + 1: t + 1]
         if not SMCStrategy.is_zone_in_play(poi, ltf, current_price=mid):
             watch_key, abandoned = None, False
             continue
@@ -227,17 +300,22 @@ def run(m1, m15, contract, point, rrr=3.0, invert=False,
         if setup is None:
             continue
 
+        # Build M15 slice for liquidity TP
+        li = liq_idx[t]
+        m15_slice = m15_liq.iloc[max(0, li - 200): li + 1] if use_liq_tp and li >= 0 else None
+
         position = _open(setup, invert, rrr, o, spread, t + 1, times, trend,
-                         poi.type, zone, len(trades), contract)
+                         poi.type, zone, len(trades), contract,
+                         m15_slice=m15_slice)
 
     for tr in trades:
         tr.pop("zone", None)
     return summarize(trades, equity, balance, times, start, rrr, invert,
-                     len(m1), m1, point, _time.time() - t_start)
+                     len(m5), m5, point, _time.time() - t_start)
 
 
 def _open(setup, invert, rrr, o, spread, nt, times, trend, poi_type, zone,
-          n_done, contract):
+          n_done, contract, m15_slice=None):
     """Turns a confirmed setup into a position filled at bar `nt`'s open."""
     if invert:
         setup = SMCStrategy.invert(setup, rrr)
@@ -247,12 +325,32 @@ def _open(setup, invert, rrr, o, spread, nt, times, trend, poi_type, zone,
     risk = abs(entry - sl)
     if risk <= 0:
         return None
-    tp = entry + risk * rrr if setup["direction"] == "BUY" else entry - risk * rrr
+
+    # Try liquidity-based TP first
+    tp = None
+    tp_source = "fixed"
+    if m15_slice is not None and len(m15_slice) > 0:
+        liq = SMCStrategy.find_nearest_liquidity(
+            m15_slice, setup["direction"], entry,
+            strength=SWING_STRENGTH, use_closed_candles=False)
+        if liq is not None:
+            liq_dist = abs(liq - entry)
+            liq_rrr = liq_dist / risk if risk > 0 else 0
+            if liq_rrr >= MIN_RRR_LIQUIDITY:
+                tp = liq
+                tp_source = "liquidity"
+            # If liq_rrr < MIN_RRR_LIQUIDITY, skip the trade
+            else:
+                return None
+
+    if tp is None:
+        tp = entry + risk * rrr if setup["direction"] == "BUY" else entry - risk * rrr
 
     return {
         "n": n_done + 1, "dir": setup["direction"], "poi": poi_type,
         "trend": trend, "entry_time": str(times.iloc[nt]),
         "entry": round(entry, 2), "sl": round(sl, 2), "tp": round(tp, 2),
+        "tp_source": tp_source,
         "risk_px": round(risk, 2),
         "risk_usd": round(risk * VOLUME * contract, 2),
         "spread_px": round(spread[nt], 2), "entry_bar": nt, "zone": zone,
@@ -260,7 +358,7 @@ def _open(setup, invert, rrr, o, spread, nt, times, trend, poi_type, zone,
 
 
 def summarize(trades, equity, balance, times, start, rrr, invert,
-              n_bars, m1, point, runtime):
+              n_bars, m5, point, runtime):
     wins = [t for t in trades if t["pnl"] > 0]
     losses = [t for t in trades if t["pnl"] <= 0]
     gross_w = sum(t["pnl"] for t in wins)
@@ -289,8 +387,8 @@ def summarize(trades, equity, balance, times, start, rrr, invert,
             "symbol": SYMBOL, "rrr": rrr,
             "period_from": str(times.iloc[start]), "period_to": str(times.iloc[-1]),
             "days": round((times.iloc[-1] - times.iloc[start]).total_seconds() / 86400, 1),
-            "m1_bars": n_bars, "start_balance": START_BALANCE, "volume": VOLUME,
-            "spread_points": int(np.median(m1["spread"].to_numpy())),
+            "m5_bars": n_bars, "start_balance": START_BALANCE, "volume": VOLUME,
+            "spread_points": int(np.median(m5["spread"].to_numpy())),
             "end_balance": round(balance, 2),
             "net_pnl": round(balance - START_BALANCE, 2),
             "return_pct": round((balance / START_BALANCE - 1) * 100, 2),
@@ -332,12 +430,16 @@ def main():
     ap.add_argument("--buffer-atr", type=float, default=0.5)
     ap.add_argument("--no-poi", action="store_true")
     ap.add_argument("--no-trend", action="store_true")
+    ap.add_argument("--no-liq-tp", action="store_true",
+                    help="use fixed RRR instead of liquidity TP")
     ap.add_argument("--refresh", action="store_true")
     ap.add_argument("--out", type=str, default=None)
     args = ap.parse_args()
 
-    m1, m15, contract, point = load_data(refresh=args.refresh)
-    print(f"{len(m1)} M1 bars  {m1['time'].iloc[0]} .. {m1['time'].iloc[-1]}")
+    m5, h1, m15_liq, contract, point = load_data(refresh=args.refresh)
+    print(f"{len(m5)} M5 bars  {m5['time'].iloc[0]} .. {m5['time'].iloc[-1]}")
+
+    use_liq = not args.no_liq_tp
 
     if args.sweep:
         print(f"\n{'RRR':>5} {'mode':<14}{'trades':>7}{'win%':>7}{'totR':>7}"
@@ -346,7 +448,8 @@ def main():
         rows = []
         for invert in (False, True):
             for rrr in (1.0, 1.5, 2.0, 2.5, 3.0, 4.0):
-                s = run(m1, m15, contract, point, rrr=rrr, invert=invert)["summary"]
+                s = run(m5, h1, m15_liq, contract, point, rrr=rrr,
+                        invert=invert, use_liq_tp=use_liq)["summary"]
                 rows.append(s)
                 print(f"{rrr:>5.1f} {s['mode']:<14}{s['trades']:>7}"
                       f"{s['win_rate']:>7.1f}{s['total_r']:>7.1f}"
@@ -363,8 +466,9 @@ def main():
         rows = []
         for mode in ("window", "swing", "zone"):
             for rrr in (1.5, 2.0, 2.5, 3.0):
-                s = run(m1, m15, contract, point, rrr=rrr, invert=True,
-                        stop_mode=mode, buffer_atr=args.buffer_atr)["summary"]
+                s = run(m5, h1, m15_liq, contract, point, rrr=rrr, invert=True,
+                        stop_mode=mode, buffer_atr=args.buffer_atr,
+                        use_liq_tp=use_liq)["summary"]
                 s["stop_mode"] = mode
                 rows.append(s)
                 print(f"{mode:<12}{rrr:>5.1f} {s['mode']:<14}{s['trades']:>7}"
@@ -379,7 +483,7 @@ def main():
         layers = [
             ("full strategy",        dict()),
             ("no trend filter",      dict(no_trend=True)),
-            ("no 15m zone",          dict(no_poi=True)),
+            ("no HTF zone",          dict(no_poi=True)),
             ("no zone, no trend",    dict(no_poi=True, no_trend=True)),
             ("one shot per zone",    dict(one_shot_per_zone=True)),
         ]
@@ -389,8 +493,8 @@ def main():
         rows = []
         for label, opts in layers:
             for invert in (False, True):
-                s = run(m1, m15, contract, point, rrr=args.rrr,
-                        invert=invert, **opts)["summary"]
+                s = run(m5, h1, m15_liq, contract, point, rrr=args.rrr,
+                        invert=invert, use_liq_tp=use_liq, **opts)["summary"]
                 s["layer"] = label
                 rows.append(s)
                 print(f"{label:<20}{s['mode']:<14}{s['trades']:>7}"
@@ -401,9 +505,9 @@ def main():
         (HERE / "ablation.json").write_text(json.dumps(rows, indent=1), "utf-8")
         return
 
-    res = run(m1, m15, contract, point, rrr=args.rrr, invert=args.invert,
+    res = run(m5, h1, m15_liq, contract, point, rrr=args.rrr, invert=args.invert,
               one_shot_per_zone=args.one_shot, no_poi=args.no_poi,
-              no_trend=args.no_trend, progress=True)
+              no_trend=args.no_trend, use_liq_tp=use_liq, progress=True)
     out = HERE / (args.out or
                   f"bt_{'inv' if args.invert else 'sig'}_rrr{args.rrr:g}.json")
     out.write_text(json.dumps(res, indent=1), "utf-8")
