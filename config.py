@@ -140,7 +140,7 @@ MIN_RRR_LIQUIDITY: float = 0.5     # minimum R:R to take the trade
 # balance, 1% risk ($1.29) is only reachable while the stop sits within ~$129
 # of entry.  Beyond that the minimum lot takes over and the real risk exceeds
 # RISK_PERCENT; the connector logs a warning when that happens.
-USE_RISK_BASED_LOT: bool = False
+USE_RISK_BASED_LOT: bool = True
 RISK_PERCENT: float = 1.0  # % of balance risked per trade
 
 # Skip entries while the spread is abnormally wide.  0 disables the filter.

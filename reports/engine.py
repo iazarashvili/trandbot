@@ -32,9 +32,10 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import (  # noqa: E402
-    HTF, HTF_CANDLES_LOOKBACK, LTF, LTF_CANDLES_LOOKBACK, MAX_LTF_WAIT_CANDLES,
+    BLOCKED_DAYS, HTF, HTF_CANDLES_LOOKBACK, LTF, LTF_CANDLES_LOOKBACK,
+    MAX_LTF_WAIT_CANDLES,
     MAX_RISK_PCT, MAX_RISK_USD, NIGHT_END_HOUR, NIGHT_START_HOUR,
-    PARTIAL_CLOSE_PCT, PARTIAL_TRIGGER_PCT,
+    PARTIAL_CLOSE_PCT, PARTIAL_TRIGGER_PCT, RISK_PERCENT, USE_RISK_BASED_LOT,
     SKIP_WEEKENDS, STOP_MODE, SYMBOL, TREND_EMA_PERIOD, USE_TREND_FILTER,
     LIQUIDITY_TF, SWING_STRENGTH, MIN_RRR_LIQUIDITY,
 )
@@ -328,8 +329,20 @@ def _open(setup, invert, rrr, o, spread, nt, times, trend, poi_type, zone,
     if risk <= 0:
         return None
 
+    # %-based position sizing: calculate volume from risk
+    if USE_RISK_BASED_LOT and balance is not None and balance > 0:
+        risk_amount = balance * RISK_PERCENT / 100.0
+        pnl_per_lot = risk * contract
+        if pnl_per_lot <= 0:
+            return None
+        vol = risk_amount / pnl_per_lot
+        # Floor to volume step (0.01)
+        vol = max(0.01, int(vol * 100) / 100.0)
+    else:
+        vol = VOLUME
+
     # Risk cap
-    risk_usd = risk * VOLUME * contract
+    risk_usd = risk * vol * contract
     if MAX_RISK_PCT > 0 and balance is not None:
         max_allowed = balance * MAX_RISK_PCT / 100
         if risk_usd > max_allowed:
@@ -361,7 +374,8 @@ def _open(setup, invert, rrr, o, spread, nt, times, trend, poi_type, zone,
         "entry": round(entry, 2), "sl": round(sl, 2), "tp": round(tp, 2),
         "tp_source": tp_source,
         "risk_px": round(risk, 2),
-        "risk_usd": round(risk * VOLUME * contract, 2),
+        "risk_usd": round(risk * vol * contract, 2),
+        "vol": vol,
         "spread_px": round(spread[nt], 2), "entry_bar": nt, "zone": zone,
     }
 
