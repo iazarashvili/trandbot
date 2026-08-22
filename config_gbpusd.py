@@ -14,3 +14,6 @@ NIGHT_START_HOUR = 21
 NIGHT_END_HOUR = 13
 # Block Monday and Tuesday — both losing days on GBPUSD.
 BLOCKED_DAYS = [0, 1]  # 0=Monday, 1=Tuesday
+
+TRAILING_STOP_TRIGGER_PCT = 0.50
+TRAILING_STOP_DISTANCE_PCT = 0.30

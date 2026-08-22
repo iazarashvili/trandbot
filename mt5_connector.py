@@ -430,6 +430,92 @@ class MT5Connector:
         logger.info("Partial close #%s: %.2f lots closed.", position.ticket, vol)
         return True
 
+    def send_limit_order(
+        self,
+        direction: str,
+        price: float,
+        sl: float,
+        tp: float,
+        volume: float,
+        comment: str = "SMC_Limit",
+    ) -> bool:
+        """Places a pending limit order at the specified price.
+
+        BUY LIMIT: price below current ask (waiting for retracement down).
+        SELL LIMIT: price above current bid (waiting for retracement up).
+        """
+        if not self.trading_enabled():
+            return False
+
+        normalized_volume = self.normalize_volume(volume)
+        if normalized_volume is None or normalized_volume <= 0:
+            logger.error("Could not normalize volume %s — order aborted.", volume)
+            return False
+
+        if direction == "BUY":
+            order_type = mt5.ORDER_TYPE_BUY_LIMIT
+        else:
+            order_type = mt5.ORDER_TYPE_SELL_LIMIT
+
+        price = self.normalize_price(price)
+        sl = self.normalize_price(sl)
+        tp = self.normalize_price(tp)
+
+        request = {
+            "action": mt5.TRADE_ACTION_PENDING,
+            "symbol": self.symbol,
+            "volume": normalized_volume,
+            "type": order_type,
+            "price": price,
+            "sl": sl,
+            "tp": tp,
+            "deviation": DEVIATION,
+            "magic": self.magic_number,
+            "comment": comment,
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": self._filling_mode(),
+        }
+        result = mt5.order_send(request)
+        if result is None:
+            logger.error("Limit order returned None: %s", mt5.last_error())
+            return False
+        if result.retcode not in (RETCODE_DONE, RETCODE_DONE_PARTIAL):
+            logger.error(
+                "Limit order failed! Retcode: %s, Comment: %s",
+                result.retcode, result.comment)
+            return False
+
+        logger.info(
+            "Limit order placed: %s %s lots @ %s | SL: %s | TP: %s",
+            direction, normalized_volume, price, sl, tp)
+        return True
+
+    def cancel_pending_orders(self, symbol: str = None) -> int:
+        """Cancels all pending orders for this symbol. Returns count cancelled."""
+        orders = mt5.orders_get(symbol=symbol or self.symbol)
+        if orders is None or len(orders) == 0:
+            return 0
+        cancelled = 0
+        for order in orders:
+            if order.magic != self.magic_number:
+                continue
+            request = {
+                "action": mt5.TRADE_ACTION_REMOVE,
+                "order": order.ticket,
+            }
+            result = mt5.order_send(request)
+            if result and result.retcode == RETCODE_DONE:
+                cancelled += 1
+                logger.info("Cancelled pending order #%s.", order.ticket)
+        return cancelled
+
+    def get_pending_orders(self) -> list:
+        """Returns pending orders for this symbol with this magic number."""
+        orders = mt5.orders_get(symbol=self.symbol)
+        if orders is None:
+            return []
+        return [o for o in orders if o.magic == self.magic_number]
+
     # ------------------------------------------------------------------
     # Order execution
     # ------------------------------------------------------------------

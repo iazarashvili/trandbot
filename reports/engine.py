@@ -35,7 +35,10 @@ from config import (  # noqa: E402
     BLOCKED_DAYS, HTF, HTF_CANDLES_LOOKBACK, LTF, LTF_CANDLES_LOOKBACK,
     MAX_LTF_WAIT_CANDLES,
     MAX_RISK_PCT, MAX_RISK_USD, NIGHT_END_HOUR, NIGHT_START_HOUR,
-    PARTIAL_CLOSE_PCT, PARTIAL_TRIGGER_PCT, RISK_PERCENT, USE_RISK_BASED_LOT,
+    PARTIAL_CLOSE_PCT, PARTIAL_TRIGGER_PCT, RISK_PERCENT,
+    TIME_STOP_BARS, TIME_STOP_MIN_PCT,
+    TRAILING_STOP_TRIGGER_PCT, TRAILING_STOP_DISTANCE_PCT,
+    USE_RISK_BASED_LOT,
     SKIP_WEEKENDS, STOP_MODE, SYMBOL, TREND_EMA_PERIOD, USE_TREND_FILTER,
     LIQUIDITY_TF, SWING_STRENGTH, MIN_RRR_LIQUIDITY,
 )
@@ -191,6 +194,63 @@ def run(m5, h1, m15_liq, contract, point, rrr=3.0, invert=False,
                         p["sl"] = p["entry"]
                         p["be_moved"] = True
 
+            # Trailing stop: once price reaches X% of TP, trail SL behind peak
+            if TRAILING_STOP_TRIGGER_PCT > 0 and not p.get("partial_done"):
+                tp_dist = abs(p["tp"] - p["entry"])
+                trail_trigger = tp_dist * TRAILING_STOP_TRIGGER_PCT
+                trail_dist = tp_dist * TRAILING_STOP_DISTANCE_PCT
+
+                if p["dir"] == "BUY":
+                    peak = p.get("peak_price", p["entry"])
+                    peak = max(peak, hi[t])
+                    p["peak_price"] = peak
+                    if peak >= p["entry"] + trail_trigger:
+                        new_sl = peak - trail_dist
+                        if new_sl > p["sl"]:
+                            p["sl"] = round(new_sl, 2)
+                else:
+                    trough = p.get("trough_price", p["entry"])
+                    trough = min(trough, lo[t] + spread[t])
+                    p["trough_price"] = trough
+                    if trough <= p["entry"] - trail_trigger:
+                        new_sl = trough + trail_dist
+                        if new_sl < p["sl"]:
+                            p["sl"] = round(new_sl, 2)
+
+            # Time stop: if trade hasn't progressed enough, force close
+            if TIME_STOP_BARS > 0 and not p.get("partial_done"):
+                bars_held = t - p["entry_bar"]
+                if bars_held >= TIME_STOP_BARS:
+                    tp_dist = abs(p["tp"] - p["entry"])
+                    if p["dir"] == "BUY":
+                        best_move = hi[t] - p["entry"]
+                    else:
+                        best_move = p["entry"] - (lo[t] + spread[t])
+                    peak_move = p.get("peak_price", p["entry"]) - p["entry"] if p["dir"] == "BUY" \
+                        else p["entry"] - p.get("trough_price", p["entry"])
+                    pct_reached = peak_move / tp_dist * 100 if tp_dist > 0 else 0
+                    if pct_reached < TIME_STOP_MIN_PCT:
+                        # Force close at current price
+                        exit_px = cl[t] if p["dir"] == "BUY" else cl[t] + spread[t]
+                        pnl = ((exit_px - p["entry"]) if p["dir"] == "BUY"
+                               else (p["entry"] - exit_px)) * vol * contract
+                        balance += pnl
+                        total_pnl = pnl + p.get("partial_pnl", 0)
+                        p.update(
+                            exit_time=str(times.iloc[t]), exit_price=round(exit_px, 2),
+                            exit_reason="TIME_STOP",
+                            bars_held=t - p.pop("entry_bar"),
+                            pnl=round(total_pnl, 2),
+                            r_multiple=round(total_pnl / p["risk_usd"], 2) if p["risk_usd"] else 0,
+                            balance=round(balance, 2),
+                        )
+                        trades.append(p)
+                        equity.append({"time": p["exit_time"], "balance": round(balance, 2)})
+                        position, watch_key, abandoned = None, None, False
+                        if balance <= 0:
+                            break
+                        continue
+
             if p["dir"] == "BUY":
                 hit_sl, hit_tp = lo[t] <= p["sl"], hi[t] >= p["tp"]
             else:
@@ -295,6 +355,10 @@ def run(m5, h1, m15_liq, contract, point, rrr=3.0, invert=False,
             continue
         if (t - watch_start + 1) > MAX_LTF_WAIT_CANDLES:
             abandoned = True
+            continue
+
+        # ---- consolidation filter ----
+        if SMCStrategy.is_consolidating(ltf, use_closed_candles=False):
             continue
 
         setup = SMCStrategy.check_ltf_confirmation(

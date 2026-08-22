@@ -12,3 +12,11 @@ MAX_RISK_PCT = 0.0
 NIGHT_START_HOUR = 0
 NIGHT_END_HOUR = 0
 BLOCKED_DAYS = []
+
+# Time stop: disabled — XAUUSD needs time, early close kills winners.
+TIME_STOP_BARS = 0
+TIME_STOP_MIN_PCT = 30
+
+# Trailing stop: disabled for XAUUSD — needs time to reach TP.
+TRAILING_STOP_TRIGGER_PCT = 0.0
+TRAILING_STOP_DISTANCE_PCT = 0.30

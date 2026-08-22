@@ -15,9 +15,9 @@ from config import MT5_LOGIN, MT5_PASSWORD, MT5_SERVER
 mt5.initialize()
 mt5.login(MT5_LOGIN, password=MT5_PASSWORD, server=MT5_SERVER)
 
-START = datetime(2025, 1, 1)
-END = datetime(2026, 8, 21, 23, 59)
-BALANCE = 200.0
+START = datetime(2026, 1, 1)
+END = datetime(2026, 8, 23, 23, 59)
+BALANCE = 2500.0
 
 symbols_cfg = [
     ("BTCUSD", 0.01, "config_btcusd"),

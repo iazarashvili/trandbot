@@ -15,3 +15,6 @@ NIGHT_END_HOUR = 13
 # Start with no blocked days — will test and adjust.
 BLOCKED_DAYS = []
 
+TRAILING_STOP_TRIGGER_PCT = 0.50
+TRAILING_STOP_DISTANCE_PCT = 0.30
+

@@ -156,12 +156,36 @@ class SMCStrategy:
         return None
 
     # ------------------------------------------------------------------
-    # Trend
+    # Trend & Consolidation
     # ------------------------------------------------------------------
     @staticmethod
     def calculate_ema(df: pd.DataFrame, period: int = 100) -> pd.Series:
         """Calculates the Exponential Moving Average (EMA)."""
         return df["close"].ewm(span=period, adjust=False).mean()
+
+    @staticmethod
+    def is_consolidating(
+        df: pd.DataFrame,
+        atr_period: int = 14,
+        threshold: float = 0.5,
+        use_closed_candles: bool = True,
+    ) -> bool:
+        """True when the market is ranging / low volatility.
+
+        Compares recent ATR (last 5 bars) to the longer ATR (atr_period bars).
+        If recent ATR < threshold * longer ATR, the market is consolidating.
+        """
+        data = SMCStrategy.closed_candles(df, use_closed_candles)
+        if len(data) < atr_period:
+            return False
+
+        ranges = (data["high"] - data["low"]).to_numpy(float)
+        long_atr = float(ranges[-atr_period:].mean())
+        short_atr = float(ranges[-5:].mean())
+
+        if long_atr <= 0:
+            return False
+        return short_atr < long_atr * threshold
 
     @staticmethod
     def get_htf_trend(
@@ -236,9 +260,9 @@ class SMCStrategy:
             ob_candle = df.iloc[i - 3]
 
             # ----------------------------------------------------------
-            # BULLISH POI (only if the trend is BULLISH or the filter is off)
+            # BULLISH POI (trend must be BULLISH, or filter is off)
             # ----------------------------------------------------------
-            if trend in ("BULLISH", "NEUTRAL") and c3["low"] > c1["high"]:
+            if (trend == "BULLISH" or not use_trend_filter) and c3["low"] > c1["high"]:
                 fvg_bottom = c1["high"]
                 fvg_top = c3["low"]
 
@@ -257,9 +281,9 @@ class SMCStrategy:
                         )
 
             # ----------------------------------------------------------
-            # BEARISH POI (only if the trend is BEARISH or the filter is off)
+            # BEARISH POI (trend must be BEARISH, or filter is off)
             # ----------------------------------------------------------
-            if trend in ("BEARISH", "NEUTRAL") and c3["high"] < c1["low"]:
+            if (trend == "BEARISH" or not use_trend_filter) and c3["high"] < c1["low"]:
                 fvg_top = c1["low"]
                 fvg_bottom = c3["high"]
 
@@ -576,9 +600,17 @@ class SMCStrategy:
             return None
 
         if poi.type == "BULLISH":
-            has_fvg = signal["low"] > fvg_first["high"]
+            fvg_bottom = float(fvg_first["high"])  # candle 1 high
+            fvg_top = float(signal["low"])          # candle 3 low
+            has_fvg = fvg_top > fvg_bottom
             if not has_fvg:
                 return None
+
+            # FVG disrespect: if any candle after FVG creation closed below
+            # fvg_bottom, the gap is filled — price disrespected it.
+            mid_candle = df.iloc[-2]  # candle between c1 and c3
+            if float(mid_candle["close"]) < fvg_bottom:
+                return None  # disrespected
 
             entry_price = float(signal["close"])
             sl_price = SMCStrategy._stop_level(
@@ -595,9 +627,17 @@ class SMCStrategy:
             }
 
         if poi.type == "BEARISH":
-            has_fvg = signal["high"] < fvg_first["low"]
+            fvg_top = float(fvg_first["low"])      # candle 1 low
+            fvg_bottom = float(signal["high"])      # candle 3 high
+            has_fvg = fvg_top > fvg_bottom
             if not has_fvg:
                 return None
+
+            # FVG disrespect: if any candle after FVG creation closed above
+            # fvg_top, the gap is filled — price disrespected it.
+            mid_candle = df.iloc[-2]
+            if float(mid_candle["close"]) > fvg_top:
+                return None  # disrespected
 
             entry_price = float(signal["close"])
             sl_price = SMCStrategy._stop_level(
