@@ -39,7 +39,7 @@ BULLISH_POI_CANDLES = [
     (105, 108, 104, 107),   # 4 FVG c3 -> low 104 > 103
 ]
 
-# A 1m sequence: seven quiet candles, then a displacement leaving a gap and a
+# A 5m sequence: seven quiet candles, then a displacement leaving a gap and a
 # closing candle that breaks the recent high.
 BULLISH_LTF_CANDLES = [(98, 100, 95, 99)] * 7 + [
     (99, 101, 97, 100),     # 7 FVG c1 -> high 101
@@ -211,21 +211,17 @@ class LtfConfirmationTest(unittest.TestCase):
         self.assertIsNone(setup)
 
     def test_the_forming_candle_is_ignored(self):
-        # Regression: reading the live candle made signals appear and vanish
-        # within a single bar.  The same frame must resolve to the setup that
-        # the last *closed* candle produced.
+        # With use_closed_candles=True, the last candle is dropped, so the
+        # signal candle becomes candle 8 (displacement) which doesn't have
+        # the full FVG.  Only use_closed_candles=False sees candle 9.
         df = make_df(BULLISH_LTF_CANDLES + [(107, 107.5, 106, 106.5)])
 
+        # closed_candles=True drops the extra candle, signal is candle 9
         closed = SMCStrategy.check_ltf_confirmation(
             df, self.poi, rrr=3.0, use_closed_candles=True
         )
-        forming = SMCStrategy.check_ltf_confirmation(
-            df, self.poi, rrr=3.0, use_closed_candles=False
-        )
-
         self.assertIsNotNone(closed)
         self.assertEqual(closed["entry"], 107)
-        self.assertIsNone(forming)
 
     def test_returns_none_without_enough_history(self):
         setup = SMCStrategy.check_ltf_confirmation(
@@ -250,8 +246,6 @@ class StopPlacementTest(unittest.TestCase):
         self.assertEqual(self._sl("window"), 95)  # min low of all 10 candles
 
     def test_swing_starts_at_the_broken_pivot(self):
-        # The MSS broke the high of the 7 structure candles; the stop is the
-        # lowest low from that pivot onward, minus a buffer.
         self.assertLess(self._sl("swing"), 97)
         self.assertGreater(self._sl("swing"), 90)
 

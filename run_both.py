@@ -1,12 +1,14 @@
-"""Runs the SMC bot on BTCUSD and XAUUSD in parallel with separate configs."""
+"""Runs the SMC bot on all configured symbols in parallel with separate configs."""
 
 import subprocess
 import sys
 
 PYTHON = sys.executable
 
+SYMBOLS = ["BTCUSD", "XAUUSD", "GBPUSD", "EURUSD"]
+
 procs = []
-for symbol in ["BTCUSD", "XAUUSD"]:
+for symbol in SYMBOLS:
     p = subprocess.Popen(
         [PYTHON, "main.py", "--symbol", symbol],
         stdout=sys.stdout,
@@ -19,9 +21,9 @@ try:
     for p in procs:
         p.wait()
 except KeyboardInterrupt:
-    print("\nStopping both bots...")
+    print("\nStopping all bots...")
     for p in procs:
         p.terminate()
     for p in procs:
         p.wait()
-    print("Both bots stopped.")
+    print("All bots stopped.")

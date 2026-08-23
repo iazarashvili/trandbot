@@ -118,6 +118,17 @@ SKIP_WEEKENDS: bool = True
 # halved because 17 trades were removed.  Not worth it.
 NIGHT_START_HOUR: int = 20
 NIGHT_END_HOUR: int = 23
+BLOCKED_DAYS: list = []
+
+# Time stop: close the trade if it hasn't reached X% of TP within N bars.
+# 0 = disabled.  Useful for XAUUSD where slow bleeds are the biggest loss.
+TIME_STOP_BARS: int = 0
+TIME_STOP_MIN_PCT: float = 30
+
+# Trailing stop: once price reaches X% of TP, trail stop behind.
+# 0 = disabled.  Catches near-miss trades that reverse after 60%+ of TP.
+TRAILING_STOP_TRIGGER_PCT: float = 0.0
+TRAILING_STOP_DISTANCE_PCT: float = 0.3
 
 # Liquidity-based take profit.  Instead of a fixed RRR target, the TP is
 # placed at the nearest swing high/low (liquidity pool) on the 15m chart.
@@ -140,7 +151,7 @@ MIN_RRR_LIQUIDITY: float = 0.5     # minimum R:R to take the trade
 # balance, 1% risk ($1.29) is only reachable while the stop sits within ~$129
 # of entry.  Beyond that the minimum lot takes over and the real risk exceeds
 # RISK_PERCENT; the connector logs a warning when that happens.
-USE_RISK_BASED_LOT: bool = False
+USE_RISK_BASED_LOT: bool = True
 RISK_PERCENT: float = 1.0  # % of balance risked per trade
 
 # Skip entries while the spread is abnormally wide.  0 disables the filter.

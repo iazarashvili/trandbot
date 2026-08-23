@@ -18,6 +18,18 @@ _LTF_FVG_CANDLES = 3
 
 
 @dataclass(frozen=True)
+class LiquiditySweep:
+    """A confirmed liquidity sweep — price breached a swing level and reversed."""
+    direction: Literal["BULLISH", "BEARISH"]  # BULLISH = swept sellside, BEARISH = swept buyside
+    liquidity_price: float      # the swing level that was swept
+    sweep_low: float            # how far price went past (for bullish)
+    sweep_high: float           # how far price went past (for bearish)
+    sweep_depth: float          # how much past the level
+    sweep_bar: int              # index in the DataFrame
+    rejection: bool             # did price close back above/below
+
+
+@dataclass(frozen=True)
 class ZonePOI:
     type: Literal["BULLISH", "BEARISH"]
     top: float
@@ -68,12 +80,112 @@ class SMCStrategy:
         return bool(overlaps.any())
 
     # ------------------------------------------------------------------
-    # Trend
+    # Liquidity Sweep
+    # ------------------------------------------------------------------
+    @staticmethod
+    def detect_liquidity_sweep(
+        df: pd.DataFrame,
+        swing_strength: int = 3,
+        sweep_tolerance_atr: float = 0.10,
+        lookback: int = 50,
+        use_closed_candles: bool = True,
+    ) -> Optional[LiquiditySweep]:
+        """Detects the most recent liquidity sweep on the given timeframe.
+
+        BULLISH sweep: price dips below a swing low (sellside liquidity) and
+        closes back above it — smart money grabbed the stops below.
+
+        BEARISH sweep: price spikes above a swing high (buyside liquidity) and
+        closes back below it — smart money grabbed the stops above.
+        """
+        data = SMCStrategy.closed_candles(df, use_closed_candles)
+        if len(data) < lookback:
+            return None
+
+        window = data.iloc[-lookback:]
+        highs = window["high"].to_numpy(float)
+        lows = window["low"].to_numpy(float)
+        closes = window["close"].to_numpy(float)
+        opens = window["open"].to_numpy(float)
+
+        atr = float((window["high"] - window["low"]).mean())
+        min_breach = atr * sweep_tolerance_atr
+
+        # Find swing highs and lows
+        swing_highs_idx = []
+        swing_lows_idx = []
+        for i in range(swing_strength, len(window) - swing_strength):
+            if highs[i] == np.max(highs[i - swing_strength: i + swing_strength + 1]):
+                swing_highs_idx.append(i)
+            if lows[i] == np.min(lows[i - swing_strength: i + swing_strength + 1]):
+                swing_lows_idx.append(i)
+
+        # Check recent candles for sweeps (last 10 candles)
+        scan_from = max(0, len(window) - 10)
+
+        # BULLISH sweep — check sellside (swing lows)
+        for si in reversed(swing_lows_idx):
+            level = lows[si]
+            for t in range(max(si + 1, scan_from), len(window)):
+                if lows[t] < level - min_breach and closes[t] > level:
+                    return LiquiditySweep(
+                        direction="BULLISH",
+                        liquidity_price=float(level),
+                        sweep_low=float(lows[t]),
+                        sweep_high=0.0,
+                        sweep_depth=float(level - lows[t]),
+                        sweep_bar=t,
+                        rejection=True,
+                    )
+
+        # BEARISH sweep — check buyside (swing highs)
+        for si in reversed(swing_highs_idx):
+            level = highs[si]
+            for t in range(max(si + 1, scan_from), len(window)):
+                if highs[t] > level + min_breach and closes[t] < level:
+                    return LiquiditySweep(
+                        direction="BEARISH",
+                        liquidity_price=float(level),
+                        sweep_low=0.0,
+                        sweep_high=float(highs[t]),
+                        sweep_depth=float(highs[t] - level),
+                        sweep_bar=t,
+                        rejection=True,
+                    )
+
+        return None
+
+    # ------------------------------------------------------------------
+    # Trend & Consolidation
     # ------------------------------------------------------------------
     @staticmethod
     def calculate_ema(df: pd.DataFrame, period: int = 100) -> pd.Series:
         """Calculates the Exponential Moving Average (EMA)."""
         return df["close"].ewm(span=period, adjust=False).mean()
+
+    @staticmethod
+    def is_consolidating(
+        df: pd.DataFrame,
+        atr_period: int = 14,
+        threshold: float = 0.5,
+        use_closed_candles: bool = True,
+    ) -> bool:
+        """True when the market is ranging / low volatility.
+
+        Compares recent ATR (last 5 bars) to the longer ATR (atr_period bars).
+        If recent ATR < threshold * longer ATR, the market is consolidating.
+        """
+        data = SMCStrategy.closed_candles(df, use_closed_candles)
+        if len(data) < atr_period:
+            return False
+
+        ranges = (data["high"] - data["low"]).to_numpy(float)
+        long_atr = float(ranges[-atr_period:].mean())
+        short_atr = float(ranges[-5:].mean())
+
+        if long_atr <= 0:
+            return False
+        return short_atr < long_atr * threshold
 
     @staticmethod
     def get_htf_trend(
@@ -148,9 +260,9 @@ class SMCStrategy:
             ob_candle = df.iloc[i - 3]
 
             # ----------------------------------------------------------
-            # BULLISH POI (only if the trend is BULLISH or the filter is off)
+            # BULLISH POI (trend must be BULLISH, or filter is off)
             # ----------------------------------------------------------
-            if trend in ("BULLISH", "NEUTRAL") and c3["low"] > c1["high"]:
+            if (trend == "BULLISH" or not use_trend_filter) and c3["low"] > c1["high"]:
                 fvg_bottom = c1["high"]
                 fvg_top = c3["low"]
 
@@ -169,9 +281,9 @@ class SMCStrategy:
                         )
 
             # ----------------------------------------------------------
-            # BEARISH POI (only if the trend is BEARISH or the filter is off)
+            # BEARISH POI (trend must be BEARISH, or filter is off)
             # ----------------------------------------------------------
-            if trend in ("BEARISH", "NEUTRAL") and c3["high"] < c1["low"]:
+            if (trend == "BEARISH" or not use_trend_filter) and c3["high"] < c1["low"]:
                 fvg_top = c1["low"]
                 fvg_bottom = c3["high"]
 
@@ -304,6 +416,111 @@ class SMCStrategy:
         return max(below) if below else None
 
     # ------------------------------------------------------------------
+    # Setup Scoring
+    # ------------------------------------------------------------------
+    @staticmethod
+    def score_setup(
+        df_htf: pd.DataFrame,
+        df_ltf: pd.DataFrame,
+        poi: Optional[ZonePOI],
+        setup: Optional[dict],
+        sweep: Optional[LiquiditySweep],
+        trend: str,
+        rrr: float = 3.0,
+        use_closed_candles: bool = True,
+    ) -> dict:
+        """Scores a setup 0-100 based on confluence of SMC factors.
+
+        Returns {"score": int, "factors": {name: points, ...}}.
+        """
+        factors = {}
+        ltf = SMCStrategy.closed_candles(df_ltf, use_closed_candles)
+
+        # 1. Liquidity sweep confirmed (+20)
+        if sweep is not None:
+            factors["liquidity_sweep"] = 20
+        else:
+            factors["liquidity_sweep"] = 0
+
+        # 2. Displacement quality (+20)
+        if setup and len(ltf) >= 3:
+            signal = ltf.iloc[-1]
+            atr = float((ltf["high"] - ltf["low"]).mean())
+            body = abs(signal["close"] - signal["open"])
+            full_range = signal["high"] - signal["low"]
+            body_ratio = body / full_range if full_range > 0 else 0
+            body_atr = body / atr if atr > 0 else 0
+
+            disp_score = 0
+            if body_atr >= 1.0:
+                disp_score += 10
+            elif body_atr >= 0.5:
+                disp_score += 5
+            if body_ratio >= 0.65:
+                disp_score += 10
+            elif body_ratio >= 0.50:
+                disp_score += 5
+            factors["displacement"] = disp_score
+        else:
+            factors["displacement"] = 0
+
+        # 3. FVG exists (+15)
+        if setup is not None:
+            factors["fvg"] = 15
+        else:
+            factors["fvg"] = 0
+
+        # 4. HTF alignment (+15)
+        if poi and setup:
+            aligned = ((poi.type == "BULLISH" and trend == "BULLISH") or
+                       (poi.type == "BEARISH" and trend == "BEARISH"))
+            factors["htf_alignment"] = 15 if aligned else 5  # neutral gets 5
+        else:
+            factors["htf_alignment"] = 0
+
+        # 5. POI zone exists (+10)
+        factors["poi_zone"] = 10 if poi else 0
+
+        # 6. RR quality (+10)
+        if setup:
+            entry = setup["entry"]
+            sl = setup["sl"]
+            tp = setup["tp"]
+            risk = abs(entry - sl)
+            reward = abs(tp - entry)
+            rr = reward / risk if risk > 0 else 0
+            if rr >= 3.0:
+                factors["rr_quality"] = 10
+            elif rr >= 2.5:
+                factors["rr_quality"] = 7
+            elif rr >= 2.0:
+                factors["rr_quality"] = 5
+            else:
+                factors["rr_quality"] = 0
+        else:
+            factors["rr_quality"] = 0
+
+        # 7. Premium/Discount (+10)
+        if poi and setup and len(ltf) >= 20:
+            recent = ltf.iloc[-20:]
+            range_high = float(recent["high"].max())
+            range_low = float(recent["low"].min())
+            equilibrium = (range_high + range_low) / 2
+            price = setup["entry"]
+
+            if poi.type == "BULLISH" and price < equilibrium:
+                factors["premium_discount"] = 10  # buying in discount
+            elif poi.type == "BEARISH" and price > equilibrium:
+                factors["premium_discount"] = 10  # selling in premium
+            else:
+                factors["premium_discount"] = 3
+        else:
+            factors["premium_discount"] = 0
+
+        score = sum(factors.values())
+        return {"score": score, "factors": factors}
+
+    # ------------------------------------------------------------------
     # LTF confirmation
     # ------------------------------------------------------------------
     @staticmethod
@@ -383,9 +600,17 @@ class SMCStrategy:
             return None
 
         if poi.type == "BULLISH":
-            has_fvg = signal["low"] > fvg_first["high"]
+            fvg_bottom = float(fvg_first["high"])  # candle 1 high
+            fvg_top = float(signal["low"])          # candle 3 low
+            has_fvg = fvg_top > fvg_bottom
             if not has_fvg:
                 return None
+
+            # FVG disrespect: if any candle after FVG creation closed below
+            # fvg_bottom, the gap is filled — price disrespected it.
+            mid_candle = df.iloc[-2]  # candle between c1 and c3
+            if float(mid_candle["close"]) < fvg_bottom:
+                return None  # disrespected
 
             entry_price = float(signal["close"])
             sl_price = SMCStrategy._stop_level(
@@ -402,9 +627,17 @@ class SMCStrategy:
             }
 
         if poi.type == "BEARISH":
-            has_fvg = signal["high"] < fvg_first["low"]
+            fvg_top = float(fvg_first["low"])      # candle 1 low
+            fvg_bottom = float(signal["high"])      # candle 3 high
+            has_fvg = fvg_top > fvg_bottom
             if not has_fvg:
                 return None
+
+            # FVG disrespect: if any candle after FVG creation closed above
+            # fvg_top, the gap is filled — price disrespected it.
+            mid_candle = df.iloc[-2]
+            if float(mid_candle["close"]) > fvg_top:
+                return None  # disrespected
 
             entry_price = float(signal["close"])
             sl_price = SMCStrategy._stop_level(
