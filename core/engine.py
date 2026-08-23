@@ -28,6 +28,7 @@ from risk.risk_manager import (
     calculate_lot_size, check_portfolio_risk, validate_entry,
 )
 from strategy import SMCStrategy
+import telegram_bot
 
 logger = logging.getLogger("smc_bot")
 
@@ -79,8 +80,64 @@ class MultiSymbolEngine:
             logger.error("No symbols available — cannot start.")
             return False
 
+        # Telegram
+        if telegram_bot.test_connection():
+            account = mt5.account_info()
+            bal = account.balance if account else 0
+            symbols_list = ", ".join(self.contexts.keys())
+            telegram_bot.send_message(
+                f"🚀 <b>SMC Bot Started</b>\n\n"
+                f"Symbols: {symbols_list}\n"
+                f"Balance: ${bal:.2f}")
+
+            # Start command listener with close handlers
+            self._tg_listener = telegram_bot.TelegramCommandListener(
+                on_close_symbol=self._tg_close_symbol,
+                on_close_all=self._tg_close_all,
+            )
+            self._tg_listener.start()
+        else:
+            self._tg_listener = None
+
         logger.info("Engine ready: %d symbols.", len(self.contexts))
         return True
+
+    def _tg_close_symbol(self, symbol: str):
+        """Close position on a symbol (triggered by Telegram)."""
+        if symbol in self.connectors:
+            conn = self.connectors[symbol]
+            positions = conn.get_open_positions()
+            if positions:
+                for pos in positions:
+                    close_type = (mt5.ORDER_TYPE_SELL if pos.type == mt5.POSITION_TYPE_BUY
+                                  else mt5.ORDER_TYPE_BUY)
+                    price = conn.entry_price(close_type)
+                    if price:
+                        req = {
+                            "action": mt5.TRADE_ACTION_DEAL,
+                            "symbol": symbol,
+                            "volume": pos.volume,
+                            "type": close_type,
+                            "position": pos.ticket,
+                            "price": price,
+                            "deviation": 20,
+                            "magic": conn.magic_number,
+                            "comment": "TG_close",
+                            "type_time": mt5.ORDER_TIME_GTC,
+                            "type_filling": mt5.ORDER_FILLING_IOC,
+                        }
+                        result = mt5.order_send(req)
+                        if result and result.retcode == 10009:
+                            telegram_bot.send_message(f"✅ {symbol} position closed.")
+                        else:
+                            telegram_bot.send_message(f"❌ Failed to close {symbol}.")
+            else:
+                telegram_bot.send_message(f"No open position on {symbol}.")
+
+    def _tg_close_all(self):
+        """Close all bot positions (triggered by Telegram)."""
+        for sym in self.connectors:
+            self._tg_close_symbol(sym)
 
     # ---------------------------------------------------------------- main loop
     def run(self):
@@ -107,6 +164,8 @@ class MultiSymbolEngine:
                         except Exception:
                             logger.exception("Error scanning %s — skipping.", sym)
 
+                    # Periodic status check for Telegram /status and /balance
+                    self._handle_tg_status()
                     time.sleep(POLL_INTERVAL)
 
                 except KeyboardInterrupt:
@@ -275,6 +334,12 @@ class MultiSymbolEngine:
 
         if success:
             logger.info("[%s] ORDER PLACED: %s %.2f lots", sym, setup["direction"], lots)
+            account = mt5.account_info()
+            bal = account.balance if account else 0
+            telegram_bot.notify_trade_opened(
+                sym, setup["direction"], lots,
+                entry_price, setup["sl"], actual_tp,
+                risk * lots * ctx.spec.contract_size, bal)
             self._reset_watch(ctx)
         else:
             ctx.state.record_rejection("ORDER_FAILED")
@@ -328,6 +393,18 @@ class MultiSymbolEngine:
                     connector.modify_position_sl_tp(pos, entry, new_tp)
                     logger.info("[%s] Runner: SL->entry, TP->%.5f",
                                 ctx.symbol, new_tp)
+                    telegram_bot.notify_partial_close(
+                        ctx.symbol, close_vol,
+                        (current - entry) * close_vol * ctx.spec.contract_size
+                        if is_buy else
+                        (entry - current) * close_vol * ctx.spec.contract_size,
+                        new_tp)
+
+    def _handle_tg_status(self):
+        """Respond to /status and /balance commands."""
+        # Check if there are unprocessed status requests
+        # This is handled by the TelegramCommandListener callback
+        pass
 
     def _reset_watch(self, ctx: SymbolContext):
         ctx.state.watch_key = None
