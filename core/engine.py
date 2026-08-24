@@ -374,31 +374,49 @@ class MultiSymbolEngine:
             triggered = current >= trigger_price if is_buy else current <= trigger_price
 
             if triggered:
-                close_vol = pos.volume * ctx.cfg.partial_close_pct
-                logger.info("[%s] Partial close %.2f lots at 80%% TP.",
-                            ctx.symbol, close_vol)
+                vol_min = ctx.spec.volume_min
+                can_split = pos.volume > vol_min
 
-                if connector.partial_close(pos, close_vol):
-                    # Find next liquidity for runner
-                    df_liq = connector.fetch_rates(LIQUIDITY_TF, LIQUIDITY_CANDLES)
-                    new_tp = pos.tp
-                    if df_liq is not None:
-                        direction = "BUY" if is_buy else "SELL"
-                        next_liq = SMCStrategy.find_next_liquidity(
-                            df_liq, direction, pos.tp,
-                            strength=SWING_STRENGTH, use_closed_candles=True)
-                        if next_liq is not None:
-                            new_tp = next_liq
+                if can_split:
+                    # Enough volume to split: close half, keep runner
+                    close_vol = connector.normalize_volume(pos.volume * ctx.cfg.partial_close_pct)
+                    logger.info("[%s] Partial close %.2f lots at 80%% TP.",
+                                ctx.symbol, close_vol)
 
-                    connector.modify_position_sl_tp(pos, entry, new_tp)
-                    logger.info("[%s] Runner: SL->entry, TP->%.5f",
-                                ctx.symbol, new_tp)
-                    telegram_bot.notify_partial_close(
-                        ctx.symbol, close_vol,
-                        (current - entry) * close_vol * ctx.spec.contract_size
-                        if is_buy else
-                        (entry - current) * close_vol * ctx.spec.contract_size,
-                        new_tp)
+                    if connector.partial_close(pos, close_vol):
+                        # After partial close MT5 creates a new ticket for the
+                        # remaining volume — the old pos.ticket is now closed.
+                        remaining = connector.get_open_positions()
+                        if not remaining:
+                            logger.warning("[%s] No remaining position after partial close.", ctx.symbol)
+                            continue
+                        pos = remaining[0]
+
+                        # Find next liquidity for runner TP
+                        df_liq = connector.fetch_rates(LIQUIDITY_TF, LIQUIDITY_CANDLES)
+                        new_tp = pos.tp
+                        if df_liq is not None:
+                            direction = "BUY" if is_buy else "SELL"
+                            next_liq = SMCStrategy.find_next_liquidity(
+                                df_liq, direction, pos.tp,
+                                strength=SWING_STRENGTH, use_closed_candles=True)
+                            if next_liq is not None:
+                                new_tp = next_liq
+
+                        connector.modify_position_sl_tp(pos, entry, new_tp)
+                        logger.info("[%s] Runner: SL->entry, TP->%.5f",
+                                    ctx.symbol, new_tp)
+                        telegram_bot.notify_partial_close(
+                            ctx.symbol, close_vol,
+                            (current - entry) * close_vol * ctx.spec.contract_size
+                            if is_buy else
+                            (entry - current) * close_vol * ctx.spec.contract_size,
+                            new_tp)
+                else:
+                    # Minimum lot — can't split, just move SL to entry
+                    connector.modify_position_sl(pos, entry)
+                    logger.info("[%s] Min lot (%.2f) — SL moved to entry (breakeven).",
+                                ctx.symbol, pos.volume)
 
     def _handle_tg_status(self):
         """Respond to /status and /balance commands."""

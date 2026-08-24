@@ -118,35 +118,52 @@ def manage_open_positions(connector: MT5Connector, positions: Sequence) -> None:
                          else current <= trigger_price)
 
             if triggered:
-                close_vol = position.volume * PARTIAL_CLOSE_PCT
-                logger.info(
-                    "📊 Position #%s reached 80%% of TP — partial close %.2f lots.",
-                    position.ticket, close_vol)
+                info = connector.symbol_info()
+                vol_min = info.volume_min if info else 0.01
+                can_split = position.volume > vol_min
 
-                if connector.partial_close(position, close_vol):
-                    # Find next liquidity level for the runner
-                    df_liq = connector.fetch_rates(LIQUIDITY_TF, LIQUIDITY_CANDLES)
-                    new_tp = position.tp  # fallback
-                    if df_liq is not None:
-                        direction = "BUY" if is_buy else "SELL"
-                        next_liq = SMCStrategy.find_next_liquidity(
-                            df_liq, direction, position.tp,
-                            strength=SWING_STRENGTH, use_closed_candles=True)
-                        if next_liq is not None:
-                            new_tp = next_liq
-                            logger.info(
-                                "🎯 Runner TP moved to next liquidity: %.2f", new_tp)
-                        else:
-                            logger.info(
-                                "🎯 No next liquidity found — keeping original TP.")
-
-                    # Move stop to entry, TP to next liquidity
-                    connector.modify_position_sl_tp(position, entry, new_tp)
-
-                    # Mark as runner so we don't partial close again
-                    # (MT5 keeps the same ticket after partial close)
+                if can_split:
+                    # Enough volume to split: close half, keep runner
+                    close_vol = connector.normalize_volume(position.volume * PARTIAL_CLOSE_PCT)
                     logger.info(
-                        "🏃 Runner: SL→%.2f (entry), TP→%.2f", entry, new_tp)
+                        "📊 Position #%s reached 80%% of TP — partial close %.2f lots.",
+                        position.ticket, close_vol)
+
+                    if connector.partial_close(position, close_vol):
+                        # After partial close MT5 creates a new ticket for the
+                        # remaining volume — re-fetch to get the valid ticket.
+                        remaining = connector.get_open_positions()
+                        if not remaining:
+                            logger.warning("No remaining position after partial close.")
+                            break
+                        position = remaining[0]
+
+                        # Find next liquidity level for the runner
+                        df_liq = connector.fetch_rates(LIQUIDITY_TF, LIQUIDITY_CANDLES)
+                        new_tp = position.tp  # fallback
+                        if df_liq is not None:
+                            direction = "BUY" if is_buy else "SELL"
+                            next_liq = SMCStrategy.find_next_liquidity(
+                                df_liq, direction, position.tp,
+                                strength=SWING_STRENGTH, use_closed_candles=True)
+                            if next_liq is not None:
+                                new_tp = next_liq
+                                logger.info(
+                                    "🎯 Runner TP moved to next liquidity: %.2f", new_tp)
+                            else:
+                                logger.info(
+                                    "🎯 No next liquidity found — keeping original TP.")
+
+                        # Move stop to entry, TP to next liquidity
+                        connector.modify_position_sl_tp(position, entry, new_tp)
+                        logger.info(
+                            "🏃 Runner: SL→%.2f (entry), TP→%.2f", entry, new_tp)
+                else:
+                    # Minimum lot — can't split, just move SL to entry
+                    connector.modify_position_sl(position, entry)
+                    logger.info(
+                        "📊 Position #%s min lot (%.2f) — SL moved to entry (breakeven).",
+                        position.ticket, position.volume)
                 continue
 
         # ---- Breakeven stop (if enabled separately) ----
