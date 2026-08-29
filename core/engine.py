@@ -35,7 +35,7 @@ logger = logging.getLogger("smc_bot")
 RECOVERY_SLEEP = 30
 
 # All symbols the engine can trade.  Add more here.
-DEFAULT_SYMBOLS = ["BTCUSD", "XAUUSD", "GBPUSD", "EURUSD"]
+DEFAULT_SYMBOLS = ["BTCUSD", "XAUUSD", "GBPUSD"]
 
 
 class MultiSymbolEngine:
@@ -254,6 +254,18 @@ class MultiSymbolEngine:
                 ctx.state.abandoned = True
                 return
 
+        # 7b. Sweep filter (XAUUSD uses this)
+        if ctx.cfg.use_sweep_filter:
+            sweep = SMCStrategy.detect_liquidity_sweep(
+                df_ltf, swing_strength=SWING_STRENGTH,
+                use_closed_candles=USE_CLOSED_CANDLES_ONLY)
+            if sweep is None:
+                return
+            if poi.type == "BULLISH" and sweep.direction != "BULLISH":
+                return
+            if poi.type == "BEARISH" and sweep.direction != "BEARISH":
+                return
+
         # 8. LTF confirmation (FVG)
         setup = SMCStrategy.check_ltf_confirmation(
             df_ltf, poi, ctx.cfg.rrr,
@@ -268,10 +280,10 @@ class MultiSymbolEngine:
         if ctx.cfg.invert_signals:
             setup = SMCStrategy.invert(setup, ctx.cfg.rrr)
 
-        # 10. Find liquidity TP
+        # 10. Find liquidity TP (skip if disabled per symbol)
         df_liq = connector.fetch_rates(LIQUIDITY_TF, LIQUIDITY_CANDLES)
         tp = setup["tp"]  # fallback
-        if df_liq is not None:
+        if ctx.cfg.use_liquidity_tp and df_liq is not None:
             entry_price = connector.entry_price(
                 mt5.ORDER_TYPE_BUY if setup["direction"] == "BUY"
                 else mt5.ORDER_TYPE_SELL)
@@ -346,8 +358,8 @@ class MultiSymbolEngine:
 
     def _manage_positions(self, ctx: SymbolContext, connector: MT5Connector,
                           positions):
-        """Manage open positions: partial close, breakeven."""
-        if not ctx.cfg.use_partial_close:
+        """Manage open positions: breakeven, partial close."""
+        if not ctx.cfg.use_partial_close and not ctx.cfg.use_breakeven:
             return
 
         tick = connector.get_tick()
@@ -366,6 +378,25 @@ class MultiSymbolEngine:
             at_entry = (pos.sl >= entry - 0.01 if is_buy
                         else pos.sl <= entry + 0.01)
             if at_entry:
+                continue
+
+            # Breakeven at N×R (independent of partial close)
+            if ctx.cfg.use_breakeven and not ctx.cfg.use_partial_close:
+                risk = abs(entry - pos.sl)
+                be_dist = risk * ctx.cfg.breakeven_r
+                if is_buy:
+                    if current >= entry + be_dist:
+                        connector.modify_position_sl(pos, entry)
+                        logger.info("[%s] Breakeven at %.1fR — SL moved to entry.",
+                                    ctx.symbol, ctx.cfg.breakeven_r)
+                else:
+                    if current <= entry - be_dist:
+                        connector.modify_position_sl(pos, entry)
+                        logger.info("[%s] Breakeven at %.1fR — SL moved to entry.",
+                                    ctx.symbol, ctx.cfg.breakeven_r)
+                continue
+
+            if not ctx.cfg.use_partial_close:
                 continue
 
             tp_dist = abs(pos.tp - entry)

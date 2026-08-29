@@ -63,6 +63,10 @@ class SymbolConfig:
     min_rr_liquidity: float = 0.5
     use_trend_filter: bool = True
     trend_ema_period: int = 100
+    use_sweep_filter: bool = False
+    use_breakeven: bool = False
+    breakeven_r: float = 2.0
+    use_liquidity_tp: bool = True
     use_partial_close: bool = True
     partial_trigger_pct: float = 0.80
     partial_close_pct: float = 0.80
@@ -100,6 +104,10 @@ class SymbolConfig:
             min_rr_liquidity=getattr(mod, "MIN_RRR_LIQUIDITY", 0.5),
             use_trend_filter=getattr(mod, "USE_TREND_FILTER", True),
             trend_ema_period=getattr(mod, "TREND_EMA_PERIOD", 100),
+            use_sweep_filter=getattr(mod, "USE_SWEEP_FILTER", False),
+            use_breakeven=getattr(mod, "USE_BREAKEVEN", False),
+            breakeven_r=getattr(mod, "BREAKEVEN_R", 2.0),
+            use_liquidity_tp=getattr(mod, "USE_LIQUIDITY_TP", True),
             use_partial_close=getattr(mod, "USE_PARTIAL_CLOSE", True),
             partial_trigger_pct=getattr(mod, "PARTIAL_TRIGGER_PCT", 0.80),
             partial_close_pct=getattr(mod, "PARTIAL_CLOSE_PCT", 0.80),
