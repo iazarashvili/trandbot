@@ -209,12 +209,16 @@ def notify_trade_opened(symbol: str, direction: str, lots: float,
                         risk_usd: float, balance: float):
     emoji = "🟢" if direction == "BUY" else "🔴"
     risk_pct = risk_usd / balance * 100 if balance > 0 else 0
+    risk_px = abs(entry - sl)
+    reward_px = abs(tp - entry)
+    rrr = round(reward_px / risk_px, 1) if risk_px > 0 else 0
     text = (
-        f"<b>TRADE ENTERED — LIVE</b>\n\n"
+        f"{emoji} <b>TRADE ENTERED — LIVE</b>\n\n"
         f"<b>{direction} {symbol}</b>\n"
         f"Entry: {entry:.5f}\n"
         f"SL:    {sl:.5f}\n"
         f"TP:    {tp:.5f}\n\n"
+        f"RRR: 1:{rrr}\n"
         f"Lots: {lots:.2f} | Risk: ${risk_usd:.2f} ({risk_pct:.1f}%)\n"
         f"Balance: ${balance:,.2f}"
     )
@@ -254,6 +258,31 @@ def notify_partial_close(symbol: str, closed_lots: float,
         f"Locked P&L: ${pnl:+.2f}\n"
         f"Runner TP -> {new_tp:.5f}\n"
         f"SL -> Entry (breakeven)"
+    )
+    send_message(text)
+
+
+def notify_waiting_for_trade(symbol: str, poi_type: str, zone_top: float,
+                             zone_bottom: float, trend: str, filters: str = ""):
+    emoji = "🟢" if poi_type == "BULLISH" else "🔴"
+    direction = "BUY" if poi_type == "BULLISH" else "SELL"
+    text = (
+        f"👀 <b>WATCHING — {symbol}</b>\n\n"
+        f"POI: {emoji} {poi_type}\n"
+        f"Zone: {zone_top:.5f} — {zone_bottom:.5f}\n"
+        f"Trend: {trend}\n"
+        f"Looking for: <b>{direction}</b> setup\n"
+    )
+    if filters:
+        text += f"Filters: {filters}\n"
+    text += "\nWaiting for confirmation..."
+    send_message(text)
+
+
+def notify_signal_rejected(symbol: str, direction: str, reason: str):
+    text = (
+        f"🚫 <b>{symbol} {direction} REJECTED</b>\n"
+        f"Reason: {reason}"
     )
     send_message(text)
 

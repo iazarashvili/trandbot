@@ -67,10 +67,13 @@ def calculate_lot_size(
     if lots < spec.volume_min:
         # Can't trade smaller than minimum — check if min lot risk is acceptable
         min_risk = spec.volume_min * pnl_per_lot
-        if min_risk > risk_amount * 1.5:  # allow 50% over if forced to min lot
+        max_allowed = risk_amount * 1.5
+        if ctx.cfg.max_risk_usd > 0:
+            max_allowed = ctx.cfg.max_risk_usd
+        if min_risk > max_allowed:
             logger.warning(
                 "[%s] Min lot %.2f risks $%.2f, exceeds $%.2f — skip.",
-                ctx.symbol, spec.volume_min, min_risk, risk_amount)
+                ctx.symbol, spec.volume_min, min_risk, max_allowed)
             return None
         lots = spec.volume_min
 

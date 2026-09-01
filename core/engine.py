@@ -14,7 +14,6 @@ import time
 from typing import List, Optional
 
 import MetaTrader5 as mt5
-import pandas as pd
 
 from config import (
     HTF, HTF_CANDLES_LOOKBACK, LTF, LTF_CANDLES_LOOKBACK,
@@ -25,7 +24,7 @@ from config import (
 from core.symbol_context import SymbolContext
 from mt5_connector import MT5Connector
 from risk.risk_manager import (
-    calculate_lot_size, check_portfolio_risk, validate_entry,
+    calculate_lot_size, validate_entry,
 )
 from strategy import SMCStrategy
 import telegram_bot
@@ -35,7 +34,7 @@ logger = logging.getLogger("smc_bot")
 RECOVERY_SLEEP = 30
 
 # All symbols the engine can trade.  Add more here.
-DEFAULT_SYMBOLS = ["BTCUSD", "XAUUSD", "GBPUSD", "EURUSD"]
+DEFAULT_SYMBOLS = ["BTCUSD", "XAUUSD", "GBPUSD"]
 
 
 class MultiSymbolEngine:
@@ -46,6 +45,9 @@ class MultiSymbolEngine:
         self.contexts: dict[str, SymbolContext] = {}
         self.connectors: dict[str, MT5Connector] = {}
         self._running = False
+        self._tg_listener = None
+        self._cycle = 0
+        self._last_status = 0.0
 
     # ---------------------------------------------------------------- init
     def initialize(self) -> bool:
@@ -149,6 +151,9 @@ class MultiSymbolEngine:
         logger.info("Symbols: %s", ", ".join(self.contexts.keys()))
         logger.info("=" * 50)
 
+        self._cycle = 0
+        self._last_status = 0
+
         try:
             while self._running:
                 try:
@@ -164,7 +169,21 @@ class MultiSymbolEngine:
                         except Exception:
                             logger.exception("Error scanning %s — skipping.", sym)
 
-                    # Periodic status check for Telegram /status and /balance
+                    # Periodic status log every 5 minutes
+                    self._cycle += 1
+                    now = time.time()
+                    if now - self._last_status >= 300:
+                        self._last_status = now
+                        parts = []
+                        for sym, ctx in self.contexts.items():
+                            s = ctx.state
+                            poi_str = f"POI={'Y' if s.poi else 'N'}"
+                            trend_str = s.trend[:4]
+                            pos = self.connectors[sym].get_open_positions()
+                            pos_str = f"POS={len(pos)}" if pos else "POS=0"
+                            parts.append(f"{sym}({trend_str} {poi_str} {pos_str})")
+                        logger.info("Status: %s", " | ".join(parts))
+
                     self._handle_tg_status()
                     time.sleep(POLL_INTERVAL)
 
@@ -182,7 +201,7 @@ class MultiSymbolEngine:
 
     # ---------------------------------------------------------------- per-symbol
     def _scan_symbol(self, ctx: SymbolContext):
-        """One full cycle for one symbol."""
+        """One full cycle for one symbol — tries all strategies."""
         sym = ctx.symbol
         connector = self.connectors[sym]
         now = datetime.datetime.now(datetime.timezone.utc)
@@ -229,49 +248,158 @@ class MultiSymbolEngine:
         )
         ctx.state.poi = poi
 
-        if poi is None:
-            self._reset_watch(ctx)
+        # 6. Fetch liquidity data (shared across strategies)
+        df_liq = connector.fetch_rates(LIQUIDITY_TF, LIQUIDITY_CANDLES)
+
+        # 7. Try all strategies — first valid signal wins
+        setup = None
+        strategy_name = None
+
+        # --- Strategy AMD: Asian Range → Sweep → MSS → FVG ---
+        if setup is None:
+            amd_setup = self._try_amd(ctx, df_ltf, now)
+            if amd_setup:
+                setup = amd_setup
+                strategy_name = "AMD"
+
+        # --- Strategy Silver Bullet: Time Window → DOL → MSS → FVG ---
+        if setup is None:
+            sb_setup = self._try_silver_bullet(ctx, df_ltf, df_liq, now)
+            if sb_setup:
+                setup = sb_setup
+                strategy_name = "SILVER_BULLET"
+
+        # --- Strategy C: POI → Sweep → FVG ---
+        if setup is None and poi is not None:
+            sweep_setup = self._try_sweep_fvg(ctx, df_ltf, poi, current_price)
+            if sweep_setup:
+                setup = sweep_setup
+                strategy_name = "SWEEP_FVG"
+
+        # P/D+FVG and baseline FVG disabled — both lose money in backtest (2026-09-01)
+
+        if setup is None:
             return
 
-        # 6. Check if price is in zone
+        # 8. Execute the winning strategy's setup
+        self._execute_setup(ctx, connector, setup, strategy_name, df_liq, now)
+
+    # ---------------------------------------------------------------- strategies
+
+    def _try_amd(self, ctx, df_ltf, now):
+        """Strategy AMD: Asian Range → Sweep → MSS → FVG."""
+        asian = SMCStrategy.get_asian_range(
+            df_ltf, use_closed_candles=USE_CLOSED_CANDLES_ONLY)
+        if asian is None:
+            return None
+
+        setup = SMCStrategy.check_amd_setup(
+            df_ltf, asian.high, asian.low,
+            swing_strength=SWING_STRENGTH,
+            rrr_fallback=ctx.cfg.rrr,
+            use_closed_candles=USE_CLOSED_CANDLES_ONLY)
+        return setup
+
+    def _try_silver_bullet(self, ctx, df_ltf, df_liq, now):
+        """Strategy Silver Bullet: strict time window + DOL + MSS + FVG."""
+        if df_liq is None:
+            return None
+
+        setup = SMCStrategy.check_silver_bullet(
+            df_ltf, df_liq,
+            current_hour_utc=now.hour,
+            current_minute=now.minute,
+            swing_strength=SWING_STRENGTH,
+            rrr_fallback=ctx.cfg.rrr,
+            use_closed_candles=USE_CLOSED_CANDLES_ONLY)
+        return setup
+
+    def _try_sweep_fvg(self, ctx, df_ltf, poi, current_price):
+        """Strategy C: POI → Sweep → FVG."""
+        if not self._check_zone(ctx, df_ltf, poi, current_price):
+            return None
+
+        # Require sweep
+        sweep = SMCStrategy.detect_liquidity_sweep(
+            df_ltf, swing_strength=SWING_STRENGTH,
+            use_closed_candles=USE_CLOSED_CANDLES_ONLY)
+        if sweep is None:
+            return None
+        if poi.type == "BULLISH" and sweep.direction != "BULLISH":
+            return None
+        if poi.type == "BEARISH" and sweep.direction != "BEARISH":
+            return None
+
+        return SMCStrategy.check_ltf_confirmation(
+            df_ltf, poi, ctx.cfg.rrr,
+            use_closed_candles=USE_CLOSED_CANDLES_ONLY,
+            stop_mode=ctx.cfg.stop_mode, buffer_atr=0.5)
+
+    def _try_pd_fvg(self, ctx, df_ltf, poi, current_price):
+        """Strategy B: POI → Premium/Discount → FVG."""
+        if not self._check_zone(ctx, df_ltf, poi, current_price):
+            return None
+
+        setup = SMCStrategy.check_ltf_confirmation(
+            df_ltf, poi, ctx.cfg.rrr,
+            use_closed_candles=USE_CLOSED_CANDLES_ONLY,
+            stop_mode=ctx.cfg.stop_mode, buffer_atr=0.5)
+        if setup is None:
+            return None
+
+        # Must be in correct P/D zone
+        pd_zone = SMCStrategy.get_premium_discount(
+            df_ltf, lookback=50, use_closed_candles=USE_CLOSED_CANDLES_ONLY)
+        if not SMCStrategy.is_premium_discount_aligned(pd_zone, setup["direction"]):
+            return None
+
+        return setup
+
+    def _try_base_fvg(self, ctx, df_ltf, poi, current_price):
+        """Strategy A: POI → FVG (baseline)."""
+        if not self._check_zone(ctx, df_ltf, poi, current_price):
+            return None
+
+        return SMCStrategy.check_ltf_confirmation(
+            df_ltf, poi, ctx.cfg.rrr,
+            use_closed_candles=USE_CLOSED_CANDLES_ONLY,
+            stop_mode=ctx.cfg.stop_mode, buffer_atr=0.5)
+
+    def _check_zone(self, ctx, df_ltf, poi, current_price):
+        """Shared zone check for POI-based strategies."""
         if not SMCStrategy.is_zone_in_play(poi, df_ltf, current_price=current_price):
-            self._reset_watch(ctx)
-            return
+            return False
 
-        # 7. Watch timer
         zone_key = (poi.type, round(float(poi.top), 2), round(float(poi.bottom), 2))
         if zone_key != ctx.state.watch_key:
             ctx.state.watch_key = zone_key
             ctx.state.watch_start = df_ltf.iloc[-1]["time"]
             ctx.state.abandoned = False
+            telegram_bot.notify_waiting_for_trade(
+                ctx.symbol, poi.type,
+                round(float(poi.top), 5), round(float(poi.bottom), 5),
+                ctx.state.trend, "Multi-strategy scan")
 
         if ctx.state.abandoned:
-            return
+            return False
 
         if ctx.state.watch_start is not None:
             waited = int((df_ltf["time"] >= ctx.state.watch_start).sum())
             if waited > MAX_LTF_WAIT_CANDLES:
                 ctx.state.abandoned = True
-                return
+                return False
 
-        # 8. LTF confirmation (FVG)
-        setup = SMCStrategy.check_ltf_confirmation(
-            df_ltf, poi, ctx.cfg.rrr,
-            use_closed_candles=USE_CLOSED_CANDLES_ONLY,
-            stop_mode=ctx.cfg.stop_mode,
-            buffer_atr=0.5,
-        )
-        if setup is None:
-            return
+        return True
 
-        # 9. Invert if configured
-        if ctx.cfg.invert_signals:
-            setup = SMCStrategy.invert(setup, ctx.cfg.rrr)
+    # ---------------------------------------------------------------- execution
 
-        # 10. Find liquidity TP
-        df_liq = connector.fetch_rates(LIQUIDITY_TF, LIQUIDITY_CANDLES)
-        tp = setup["tp"]  # fallback
-        if df_liq is not None:
+    def _execute_setup(self, ctx, connector, setup, strategy_name, df_liq, now):
+        """Validate, size, and execute a setup from any strategy."""
+        sym = ctx.symbol
+
+        # Liquidity TP (for non-AMD/SB strategies that don't set their own TP)
+        tp = setup["tp"]
+        if ctx.cfg.use_liquidity_tp and df_liq is not None and setup.get("model") is None:
             entry_price = connector.entry_price(
                 mt5.ORDER_TYPE_BUY if setup["direction"] == "BUY"
                 else mt5.ORDER_TYPE_SELL)
@@ -286,7 +414,7 @@ class MultiSymbolEngine:
                     if liq_rr >= ctx.cfg.min_rr_liquidity:
                         tp = liq
 
-        # 11. Risk validation
+        # Risk validation
         entry_price = connector.entry_price(
             mt5.ORDER_TYPE_BUY if setup["direction"] == "BUY"
             else mt5.ORDER_TYPE_SELL)
@@ -297,24 +425,24 @@ class MultiSymbolEngine:
                                     entry_price, setup["sl"], tp)
         if rejection:
             ctx.state.record_rejection(rejection)
-            logger.info("[%s] REJECTED: %s", sym, rejection)
+            logger.info("[%s] %s REJECTED: %s", sym, strategy_name, rejection)
             return
 
-        # 12. Calculate lot size
+        # Lot sizing
         lots = calculate_lot_size(ctx, entry_price, setup["sl"])
         if lots is None:
             ctx.state.record_rejection("SIZING_FAILED")
             return
 
-        # 13. Execute
+        # Execute
         logger.info(
-            "[%s] SETUP: %s entry=%.5f sl=%.5f tp=%.5f lots=%.2f",
-            sym, setup["direction"], entry_price, setup["sl"], tp, lots)
+            "[%s] %s SETUP: %s entry=%.5f sl=%.5f tp=%.5f lots=%.2f",
+            sym, strategy_name, setup["direction"],
+            entry_price, setup["sl"], tp, lots)
 
         order_type = (mt5.ORDER_TYPE_BUY if setup["direction"] == "BUY"
                       else mt5.ORDER_TYPE_SELL)
 
-        # Re-anchor SL/TP on actual entry price
         risk = abs(entry_price - setup["sl"])
         if setup["direction"] == "BUY":
             actual_tp = tp if tp > entry_price else entry_price + risk * ctx.cfg.rrr
@@ -329,11 +457,12 @@ class MultiSymbolEngine:
             sl=levels.sl,
             tp=levels.tp,
             volume=lots,
-            comment=f"SMC_{setup['direction']}",
+            comment=f"SMC_{strategy_name}_{setup['direction']}",
         )
 
         if success:
-            logger.info("[%s] ORDER PLACED: %s %.2f lots", sym, setup["direction"], lots)
+            logger.info("[%s] %s ORDER PLACED: %s %.2f lots",
+                        sym, strategy_name, setup["direction"], lots)
             account = mt5.account_info()
             bal = account.balance if account else 0
             telegram_bot.notify_trade_opened(
@@ -346,8 +475,8 @@ class MultiSymbolEngine:
 
     def _manage_positions(self, ctx: SymbolContext, connector: MT5Connector,
                           positions):
-        """Manage open positions: partial close, breakeven."""
-        if not ctx.cfg.use_partial_close:
+        """Manage open positions: breakeven, partial close."""
+        if not ctx.cfg.use_partial_close and not ctx.cfg.use_breakeven:
             return
 
         tick = connector.get_tick()
@@ -368,37 +497,74 @@ class MultiSymbolEngine:
             if at_entry:
                 continue
 
+            # Breakeven at N×R (independent of partial close)
+            if ctx.cfg.use_breakeven and not ctx.cfg.use_partial_close:
+                risk = abs(entry - pos.sl)
+                be_dist = risk * ctx.cfg.breakeven_r
+                if is_buy:
+                    if current >= entry + be_dist:
+                        connector.modify_position_sl(pos, entry)
+                        logger.info("[%s] Breakeven at %.1fR — SL moved to entry.",
+                                    ctx.symbol, ctx.cfg.breakeven_r)
+                else:
+                    if current <= entry - be_dist:
+                        connector.modify_position_sl(pos, entry)
+                        logger.info("[%s] Breakeven at %.1fR — SL moved to entry.",
+                                    ctx.symbol, ctx.cfg.breakeven_r)
+                continue
+
+            if not ctx.cfg.use_partial_close:
+                continue
+
             tp_dist = abs(pos.tp - entry)
             trigger_price = (entry + tp_dist * ctx.cfg.partial_trigger_pct if is_buy
                              else entry - tp_dist * ctx.cfg.partial_trigger_pct)
             triggered = current >= trigger_price if is_buy else current <= trigger_price
 
             if triggered:
-                close_vol = pos.volume * ctx.cfg.partial_close_pct
-                logger.info("[%s] Partial close %.2f lots at 80%% TP.",
-                            ctx.symbol, close_vol)
+                vol_min = ctx.spec.volume_min
+                can_split = pos.volume > vol_min
 
-                if connector.partial_close(pos, close_vol):
-                    # Find next liquidity for runner
-                    df_liq = connector.fetch_rates(LIQUIDITY_TF, LIQUIDITY_CANDLES)
-                    new_tp = pos.tp
-                    if df_liq is not None:
-                        direction = "BUY" if is_buy else "SELL"
-                        next_liq = SMCStrategy.find_next_liquidity(
-                            df_liq, direction, pos.tp,
-                            strength=SWING_STRENGTH, use_closed_candles=True)
-                        if next_liq is not None:
-                            new_tp = next_liq
+                if can_split:
+                    # Enough volume to split: close half, keep runner
+                    close_vol = connector.normalize_volume(pos.volume * ctx.cfg.partial_close_pct)
+                    logger.info("[%s] Partial close %.2f lots at 80%% TP.",
+                                ctx.symbol, close_vol)
 
-                    connector.modify_position_sl_tp(pos, entry, new_tp)
-                    logger.info("[%s] Runner: SL->entry, TP->%.5f",
-                                ctx.symbol, new_tp)
-                    telegram_bot.notify_partial_close(
-                        ctx.symbol, close_vol,
-                        (current - entry) * close_vol * ctx.spec.contract_size
-                        if is_buy else
-                        (entry - current) * close_vol * ctx.spec.contract_size,
-                        new_tp)
+                    if connector.partial_close(pos, close_vol):
+                        # After partial close MT5 creates a new ticket for the
+                        # remaining volume — the old pos.ticket is now closed.
+                        remaining = connector.get_open_positions()
+                        if not remaining:
+                            logger.warning("[%s] No remaining position after partial close.", ctx.symbol)
+                            continue
+                        pos = remaining[0]
+
+                        # Find next liquidity for runner TP
+                        df_liq = connector.fetch_rates(LIQUIDITY_TF, LIQUIDITY_CANDLES)
+                        new_tp = pos.tp
+                        if df_liq is not None:
+                            direction = "BUY" if is_buy else "SELL"
+                            next_liq = SMCStrategy.find_next_liquidity(
+                                df_liq, direction, pos.tp,
+                                strength=SWING_STRENGTH, use_closed_candles=True)
+                            if next_liq is not None:
+                                new_tp = next_liq
+
+                        connector.modify_position_sl_tp(pos, entry, new_tp)
+                        logger.info("[%s] Runner: SL->entry, TP->%.5f",
+                                    ctx.symbol, new_tp)
+                        telegram_bot.notify_partial_close(
+                            ctx.symbol, close_vol,
+                            (current - entry) * close_vol * ctx.spec.contract_size
+                            if is_buy else
+                            (entry - current) * close_vol * ctx.spec.contract_size,
+                            new_tp)
+                else:
+                    # Minimum lot — can't split, just move SL to entry
+                    connector.modify_position_sl(pos, entry)
+                    logger.info("[%s] Min lot (%.2f) — SL moved to entry (breakeven).",
+                                ctx.symbol, pos.volume)
 
     def _handle_tg_status(self):
         """Respond to /status and /balance commands."""
