@@ -14,7 +14,6 @@ import time
 from typing import List, Optional
 
 import MetaTrader5 as mt5
-import pandas as pd
 
 from config import (
     HTF, HTF_CANDLES_LOOKBACK, LTF, LTF_CANDLES_LOOKBACK,
@@ -25,7 +24,7 @@ from config import (
 from core.symbol_context import SymbolContext
 from mt5_connector import MT5Connector
 from risk.risk_manager import (
-    calculate_lot_size, check_portfolio_risk, validate_entry,
+    calculate_lot_size, validate_entry,
 )
 from strategy import SMCStrategy
 import telegram_bot
@@ -46,6 +45,9 @@ class MultiSymbolEngine:
         self.contexts: dict[str, SymbolContext] = {}
         self.connectors: dict[str, MT5Connector] = {}
         self._running = False
+        self._tg_listener = None
+        self._cycle = 0
+        self._last_status = 0.0
 
     # ---------------------------------------------------------------- init
     def initialize(self) -> bool:
@@ -199,7 +201,7 @@ class MultiSymbolEngine:
 
     # ---------------------------------------------------------------- per-symbol
     def _scan_symbol(self, ctx: SymbolContext):
-        """One full cycle for one symbol."""
+        """One full cycle for one symbol — tries all strategies."""
         sym = ctx.symbol
         connector = self.connectors[sym]
         now = datetime.datetime.now(datetime.timezone.utc)
@@ -246,155 +248,158 @@ class MultiSymbolEngine:
         )
         ctx.state.poi = poi
 
-        if poi is None:
-            self._reset_watch(ctx)
+        # 6. Fetch liquidity data (shared across strategies)
+        df_liq = connector.fetch_rates(LIQUIDITY_TF, LIQUIDITY_CANDLES)
+
+        # 7. Try all strategies — first valid signal wins
+        setup = None
+        strategy_name = None
+
+        # --- Strategy AMD: Asian Range → Sweep → MSS → FVG ---
+        if setup is None:
+            amd_setup = self._try_amd(ctx, df_ltf, now)
+            if amd_setup:
+                setup = amd_setup
+                strategy_name = "AMD"
+
+        # --- Strategy Silver Bullet: Time Window → DOL → MSS → FVG ---
+        if setup is None:
+            sb_setup = self._try_silver_bullet(ctx, df_ltf, df_liq, now)
+            if sb_setup:
+                setup = sb_setup
+                strategy_name = "SILVER_BULLET"
+
+        # --- Strategy C: POI → Sweep → FVG ---
+        if setup is None and poi is not None:
+            sweep_setup = self._try_sweep_fvg(ctx, df_ltf, poi, current_price)
+            if sweep_setup:
+                setup = sweep_setup
+                strategy_name = "SWEEP_FVG"
+
+        # P/D+FVG and baseline FVG disabled — both lose money in backtest (2026-09-01)
+
+        if setup is None:
             return
 
-        # 6. Check if price is in zone
+        # 8. Execute the winning strategy's setup
+        self._execute_setup(ctx, connector, setup, strategy_name, df_liq, now)
+
+    # ---------------------------------------------------------------- strategies
+
+    def _try_amd(self, ctx, df_ltf, now):
+        """Strategy AMD: Asian Range → Sweep → MSS → FVG."""
+        asian = SMCStrategy.get_asian_range(
+            df_ltf, use_closed_candles=USE_CLOSED_CANDLES_ONLY)
+        if asian is None:
+            return None
+
+        setup = SMCStrategy.check_amd_setup(
+            df_ltf, asian.high, asian.low,
+            swing_strength=SWING_STRENGTH,
+            rrr_fallback=ctx.cfg.rrr,
+            use_closed_candles=USE_CLOSED_CANDLES_ONLY)
+        return setup
+
+    def _try_silver_bullet(self, ctx, df_ltf, df_liq, now):
+        """Strategy Silver Bullet: strict time window + DOL + MSS + FVG."""
+        if df_liq is None:
+            return None
+
+        setup = SMCStrategy.check_silver_bullet(
+            df_ltf, df_liq,
+            current_hour_utc=now.hour,
+            current_minute=now.minute,
+            swing_strength=SWING_STRENGTH,
+            rrr_fallback=ctx.cfg.rrr,
+            use_closed_candles=USE_CLOSED_CANDLES_ONLY)
+        return setup
+
+    def _try_sweep_fvg(self, ctx, df_ltf, poi, current_price):
+        """Strategy C: POI → Sweep → FVG."""
+        if not self._check_zone(ctx, df_ltf, poi, current_price):
+            return None
+
+        # Require sweep
+        sweep = SMCStrategy.detect_liquidity_sweep(
+            df_ltf, swing_strength=SWING_STRENGTH,
+            use_closed_candles=USE_CLOSED_CANDLES_ONLY)
+        if sweep is None:
+            return None
+        if poi.type == "BULLISH" and sweep.direction != "BULLISH":
+            return None
+        if poi.type == "BEARISH" and sweep.direction != "BEARISH":
+            return None
+
+        return SMCStrategy.check_ltf_confirmation(
+            df_ltf, poi, ctx.cfg.rrr,
+            use_closed_candles=USE_CLOSED_CANDLES_ONLY,
+            stop_mode=ctx.cfg.stop_mode, buffer_atr=0.5)
+
+    def _try_pd_fvg(self, ctx, df_ltf, poi, current_price):
+        """Strategy B: POI → Premium/Discount → FVG."""
+        if not self._check_zone(ctx, df_ltf, poi, current_price):
+            return None
+
+        setup = SMCStrategy.check_ltf_confirmation(
+            df_ltf, poi, ctx.cfg.rrr,
+            use_closed_candles=USE_CLOSED_CANDLES_ONLY,
+            stop_mode=ctx.cfg.stop_mode, buffer_atr=0.5)
+        if setup is None:
+            return None
+
+        # Must be in correct P/D zone
+        pd_zone = SMCStrategy.get_premium_discount(
+            df_ltf, lookback=50, use_closed_candles=USE_CLOSED_CANDLES_ONLY)
+        if not SMCStrategy.is_premium_discount_aligned(pd_zone, setup["direction"]):
+            return None
+
+        return setup
+
+    def _try_base_fvg(self, ctx, df_ltf, poi, current_price):
+        """Strategy A: POI → FVG (baseline)."""
+        if not self._check_zone(ctx, df_ltf, poi, current_price):
+            return None
+
+        return SMCStrategy.check_ltf_confirmation(
+            df_ltf, poi, ctx.cfg.rrr,
+            use_closed_candles=USE_CLOSED_CANDLES_ONLY,
+            stop_mode=ctx.cfg.stop_mode, buffer_atr=0.5)
+
+    def _check_zone(self, ctx, df_ltf, poi, current_price):
+        """Shared zone check for POI-based strategies."""
         if not SMCStrategy.is_zone_in_play(poi, df_ltf, current_price=current_price):
-            self._reset_watch(ctx)
-            return
+            return False
 
-        # 7. Watch timer
         zone_key = (poi.type, round(float(poi.top), 2), round(float(poi.bottom), 2))
         if zone_key != ctx.state.watch_key:
             ctx.state.watch_key = zone_key
             ctx.state.watch_start = df_ltf.iloc[-1]["time"]
             ctx.state.abandoned = False
-
-            # Notify: new zone entered
-            filters_list = []
-            if ctx.cfg.use_sweep_filter:
-                filters_list.append("Sweep")
-            if ctx.cfg.use_ifvg:
-                filters_list.append("IFVG")
-            if ctx.cfg.use_breaker_blocks:
-                filters_list.append("Breaker")
-            if ctx.cfg.use_premium_discount:
-                filters_list.append("P/D")
-            if ctx.cfg.use_structure_shift:
-                filters_list.append("MSS")
             telegram_bot.notify_waiting_for_trade(
-                sym, poi.type,
+                ctx.symbol, poi.type,
                 round(float(poi.top), 5), round(float(poi.bottom), 5),
-                ctx.state.trend,
-                ", ".join(filters_list) if filters_list else "FVG only")
+                ctx.state.trend, "Multi-strategy scan")
 
         if ctx.state.abandoned:
-            return
+            return False
 
         if ctx.state.watch_start is not None:
             waited = int((df_ltf["time"] >= ctx.state.watch_start).sum())
             if waited > MAX_LTF_WAIT_CANDLES:
                 ctx.state.abandoned = True
-                return
+                return False
 
-        # 7b. Sweep filter (XAUUSD uses this)
-        if ctx.cfg.use_sweep_filter:
-            sweep = SMCStrategy.detect_liquidity_sweep(
-                df_ltf, swing_strength=SWING_STRENGTH,
-                use_closed_candles=USE_CLOSED_CANDLES_ONLY)
-            if sweep is None:
-                return
-            if poi.type == "BULLISH" and sweep.direction != "BULLISH":
-                return
-            if poi.type == "BEARISH" and sweep.direction != "BEARISH":
-                return
+        return True
 
-        # 8. LTF confirmation (FVG)
-        setup = SMCStrategy.check_ltf_confirmation(
-            df_ltf, poi, ctx.cfg.rrr,
-            use_closed_candles=USE_CLOSED_CANDLES_ONLY,
-            stop_mode=ctx.cfg.stop_mode,
-            buffer_atr=0.5,
-        )
-        if setup is None:
-            return
+    # ---------------------------------------------------------------- execution
 
-        # 9. ICT filters (Asian range, Premium/Discount, MSS, Breaker)
-        if ctx.cfg.use_asian_range:
-            asian = SMCStrategy.get_asian_range(df_ltf, use_closed_candles=USE_CLOSED_CANDLES_ONLY)
-            if asian is not None:
-                if not SMCStrategy.is_asian_range_swept(df_ltf, asian, poi.type):
-                    ctx.state.record_rejection("ASIAN_NOT_SWEPT")
-                    return
+    def _execute_setup(self, ctx, connector, setup, strategy_name, df_liq, now):
+        """Validate, size, and execute a setup from any strategy."""
+        sym = ctx.symbol
 
-        if ctx.cfg.use_premium_discount:
-            pd_zone = SMCStrategy.get_premium_discount(
-                df_ltf, lookback=50, use_closed_candles=USE_CLOSED_CANDLES_ONLY)
-            if not SMCStrategy.is_premium_discount_aligned(pd_zone, setup["direction"]):
-                ctx.state.record_rejection("WRONG_PD_ZONE")
-                return
-
-        if ctx.cfg.use_structure_shift:
-            mss = SMCStrategy.detect_structure_shift(
-                df_ltf, swing_strength=3, lookback=50,
-                use_closed_candles=USE_CLOSED_CANDLES_ONLY)
-            if mss is None:
-                ctx.state.record_rejection("NO_STRUCTURE_SHIFT")
-                return
-            # MSS/BOS direction must match trade direction
-            if setup["direction"] == "BUY" and mss.direction != "BULLISH":
-                ctx.state.record_rejection("MSS_WRONG_DIR")
-                return
-            if setup["direction"] == "SELL" and mss.direction != "BEARISH":
-                ctx.state.record_rejection("MSS_WRONG_DIR")
-                return
-
-        if ctx.cfg.use_breaker_blocks:
-            breaker = SMCStrategy.detect_breaker_block(
-                df_ltf, lookback=50, use_closed_candles=USE_CLOSED_CANDLES_ONLY)
-            if breaker is not None:
-                # If breaker exists and opposes our direction, skip
-                if setup["direction"] == "BUY" and breaker.type == "BEARISH":
-                    if setup["entry"] < breaker.top:
-                        ctx.state.record_rejection("BREAKER_BLOCK")
-                        return
-                elif setup["direction"] == "SELL" and breaker.type == "BULLISH":
-                    if setup["entry"] > breaker.bottom:
-                        ctx.state.record_rejection("BREAKER_BLOCK")
-                        return
-
-        if ctx.cfg.use_po3:
-            po3 = SMCStrategy.detect_po3(
-                df_ltf, use_closed_candles=USE_CLOSED_CANDLES_ONLY)
-            if po3 is not None:
-                # PO3 direction must match setup direction
-                if setup["direction"] == "BUY" and po3["direction"] != "BULLISH":
-                    ctx.state.record_rejection("PO3_WRONG_DIR")
-                    return
-                if setup["direction"] == "SELL" and po3["direction"] != "BEARISH":
-                    ctx.state.record_rejection("PO3_WRONG_DIR")
-                    return
-            else:
-                ctx.state.record_rejection("NO_PO3")
-                return
-
-        if ctx.cfg.use_ifvg:
-            ifvg = SMCStrategy.detect_ifvg(
-                df_ltf, lookback=50, use_closed_candles=USE_CLOSED_CANDLES_ONLY)
-            if ifvg is not None:
-                # IFVG opposes our direction = confirmation (support/resistance)
-                # IFVG same as our direction = warning
-                if setup["direction"] == "BUY" and ifvg["type"] == "BEARISH":
-                    # Bearish IFVG above us = resistance, skip
-                    if setup["entry"] < ifvg["top"]:
-                        ctx.state.record_rejection("IFVG_RESISTANCE")
-                        return
-                elif setup["direction"] == "SELL" and ifvg["type"] == "BULLISH":
-                    # Bullish IFVG below us = support, skip
-                    if setup["entry"] > ifvg["bottom"]:
-                        ctx.state.record_rejection("IFVG_SUPPORT")
-                        return
-
-        # 9b. Invert if configured
-        if ctx.cfg.invert_signals:
-            setup = SMCStrategy.invert(setup, ctx.cfg.rrr)
-
-        # 10. Find liquidity TP (skip if disabled per symbol)
-        df_liq = connector.fetch_rates(LIQUIDITY_TF, LIQUIDITY_CANDLES)
-        tp = setup["tp"]  # fallback
-        if ctx.cfg.use_liquidity_tp and df_liq is not None:
+        # Liquidity TP (for non-AMD/SB strategies that don't set their own TP)
+        tp = setup["tp"]
+        if ctx.cfg.use_liquidity_tp and df_liq is not None and setup.get("model") is None:
             entry_price = connector.entry_price(
                 mt5.ORDER_TYPE_BUY if setup["direction"] == "BUY"
                 else mt5.ORDER_TYPE_SELL)
@@ -409,7 +414,7 @@ class MultiSymbolEngine:
                     if liq_rr >= ctx.cfg.min_rr_liquidity:
                         tp = liq
 
-        # 11. Risk validation
+        # Risk validation
         entry_price = connector.entry_price(
             mt5.ORDER_TYPE_BUY if setup["direction"] == "BUY"
             else mt5.ORDER_TYPE_SELL)
@@ -420,24 +425,24 @@ class MultiSymbolEngine:
                                     entry_price, setup["sl"], tp)
         if rejection:
             ctx.state.record_rejection(rejection)
-            logger.info("[%s] REJECTED: %s", sym, rejection)
+            logger.info("[%s] %s REJECTED: %s", sym, strategy_name, rejection)
             return
 
-        # 12. Calculate lot size
+        # Lot sizing
         lots = calculate_lot_size(ctx, entry_price, setup["sl"])
         if lots is None:
             ctx.state.record_rejection("SIZING_FAILED")
             return
 
-        # 13. Execute
+        # Execute
         logger.info(
-            "[%s] SETUP: %s entry=%.5f sl=%.5f tp=%.5f lots=%.2f",
-            sym, setup["direction"], entry_price, setup["sl"], tp, lots)
+            "[%s] %s SETUP: %s entry=%.5f sl=%.5f tp=%.5f lots=%.2f",
+            sym, strategy_name, setup["direction"],
+            entry_price, setup["sl"], tp, lots)
 
         order_type = (mt5.ORDER_TYPE_BUY if setup["direction"] == "BUY"
                       else mt5.ORDER_TYPE_SELL)
 
-        # Re-anchor SL/TP on actual entry price
         risk = abs(entry_price - setup["sl"])
         if setup["direction"] == "BUY":
             actual_tp = tp if tp > entry_price else entry_price + risk * ctx.cfg.rrr
@@ -452,11 +457,12 @@ class MultiSymbolEngine:
             sl=levels.sl,
             tp=levels.tp,
             volume=lots,
-            comment=f"SMC_{setup['direction']}",
+            comment=f"SMC_{strategy_name}_{setup['direction']}",
         )
 
         if success:
-            logger.info("[%s] ORDER PLACED: %s %.2f lots", sym, setup["direction"], lots)
+            logger.info("[%s] %s ORDER PLACED: %s %.2f lots",
+                        sym, strategy_name, setup["direction"], lots)
             account = mt5.account_info()
             bal = account.balance if account else 0
             telegram_bot.notify_trade_opened(

@@ -458,111 +458,6 @@ class SMCStrategy:
         return max(below) if below else None
 
     # ------------------------------------------------------------------
-    # Setup Scoring
-    # ------------------------------------------------------------------
-    @staticmethod
-    def score_setup(
-        df_htf: pd.DataFrame,
-        df_ltf: pd.DataFrame,
-        poi: Optional[ZonePOI],
-        setup: Optional[dict],
-        sweep: Optional[LiquiditySweep],
-        trend: str,
-        rrr: float = 3.0,
-        use_closed_candles: bool = True,
-    ) -> dict:
-        """Scores a setup 0-100 based on confluence of SMC factors.
-
-        Returns {"score": int, "factors": {name: points, ...}}.
-        """
-        factors = {}
-        ltf = SMCStrategy.closed_candles(df_ltf, use_closed_candles)
-
-        # 1. Liquidity sweep confirmed (+20)
-        if sweep is not None:
-            factors["liquidity_sweep"] = 20
-        else:
-            factors["liquidity_sweep"] = 0
-
-        # 2. Displacement quality (+20)
-        if setup and len(ltf) >= 3:
-            signal = ltf.iloc[-1]
-            atr = float((ltf["high"] - ltf["low"]).mean())
-            body = abs(signal["close"] - signal["open"])
-            full_range = signal["high"] - signal["low"]
-            body_ratio = body / full_range if full_range > 0 else 0
-            body_atr = body / atr if atr > 0 else 0
-
-            disp_score = 0
-            if body_atr >= 1.0:
-                disp_score += 10
-            elif body_atr >= 0.5:
-                disp_score += 5
-            if body_ratio >= 0.65:
-                disp_score += 10
-            elif body_ratio >= 0.50:
-                disp_score += 5
-            factors["displacement"] = disp_score
-        else:
-            factors["displacement"] = 0
-
-        # 3. FVG exists (+15)
-        if setup is not None:
-            factors["fvg"] = 15
-        else:
-            factors["fvg"] = 0
-
-        # 4. HTF alignment (+15)
-        if poi and setup:
-            aligned = ((poi.type == "BULLISH" and trend == "BULLISH") or
-                       (poi.type == "BEARISH" and trend == "BEARISH"))
-            factors["htf_alignment"] = 15 if aligned else 5  # neutral gets 5
-        else:
-            factors["htf_alignment"] = 0
-
-        # 5. POI zone exists (+10)
-        factors["poi_zone"] = 10 if poi else 0
-
-        # 6. RR quality (+10)
-        if setup:
-            entry = setup["entry"]
-            sl = setup["sl"]
-            tp = setup["tp"]
-            risk = abs(entry - sl)
-            reward = abs(tp - entry)
-            rr = reward / risk if risk > 0 else 0
-            if rr >= 3.0:
-                factors["rr_quality"] = 10
-            elif rr >= 2.5:
-                factors["rr_quality"] = 7
-            elif rr >= 2.0:
-                factors["rr_quality"] = 5
-            else:
-                factors["rr_quality"] = 0
-        else:
-            factors["rr_quality"] = 0
-
-        # 7. Premium/Discount (+10)
-        if poi and setup and len(ltf) >= 20:
-            recent = ltf.iloc[-20:]
-            range_high = float(recent["high"].max())
-            range_low = float(recent["low"].min())
-            equilibrium = (range_high + range_low) / 2
-            price = setup["entry"]
-
-            if poi.type == "BULLISH" and price < equilibrium:
-                factors["premium_discount"] = 10  # buying in discount
-            elif poi.type == "BEARISH" and price > equilibrium:
-                factors["premium_discount"] = 10  # selling in premium
-            else:
-                factors["premium_discount"] = 3
-        else:
-            factors["premium_discount"] = 0
-
-        score = sum(factors.values())
-        return {"score": score, "factors": factors}
-
-    # ------------------------------------------------------------------
     # LTF confirmation
     # ------------------------------------------------------------------
     @staticmethod
@@ -1282,3 +1177,283 @@ class SMCStrategy:
 
         below = [eq.level for eq in eql_list if eq.level < entry_price]
         return max(below) if below else None
+
+    # ==================================================================
+    # COMPLETE ICT STRATEGY MODELS
+    # ==================================================================
+
+    # ------------------------------------------------------------------
+    # AMD: Accumulation → Manipulation → Distribution
+    # ------------------------------------------------------------------
+    @staticmethod
+    def check_amd_setup(
+        df_ltf: pd.DataFrame,
+        asian_high: float,
+        asian_low: float,
+        swing_strength: int = 3,
+        rrr_fallback: float = 2.5,
+        use_closed_candles: bool = True,
+    ) -> Optional[dict]:
+        """Full AMD strategy check.
+
+        1. Manipulation: price sweeps Asian High or Low
+        2. MSS: market structure shifts in opposite direction
+        3. FVG: displacement leaves a fair value gap
+        4. Entry: limit order at FVG boundary
+        5. TP: opposite Asian boundary (or fallback RRR)
+
+        Returns setup dict or None.
+        """
+        data = SMCStrategy.closed_candles(df_ltf, use_closed_candles)
+        if len(data) < 20:
+            return None
+
+        highs = data["high"].to_numpy(float)
+        lows = data["low"].to_numpy(float)
+        closes = data["close"].to_numpy(float)
+        opens = data["open"].to_numpy(float)
+
+        # --- Step 1: Detect Manipulation (Asian range sweep) ---
+        # Check last 10 bars for sweep
+        scan = min(10, len(data))
+        swept_low = False
+        swept_high = False
+        manip_low = 0.0
+        manip_high = 0.0
+
+        for i in range(-scan, 0):
+            if lows[i] < asian_low and closes[i] > asian_low:
+                swept_low = True
+                manip_low = float(lows[i])
+            if highs[i] > asian_high and closes[i] < asian_high:
+                swept_high = True
+                manip_high = float(highs[i])
+
+        if not swept_low and not swept_high:
+            return None
+
+        # --- Step 2: Detect MSS (Market Structure Shift) ---
+        mss = SMCStrategy.detect_structure_shift(
+            df_ltf, swing_strength=swing_strength, lookback=30,
+            use_closed_candles=use_closed_candles)
+
+        if mss is None:
+            return None
+
+        # MSS must confirm reversal direction
+        if swept_low and mss.direction != "BULLISH":
+            return None  # swept low but no bullish MSS
+        if swept_high and mss.direction != "BEARISH":
+            return None  # swept high but no bearish MSS
+
+        # --- Step 3: Detect FVG ---
+        if len(data) < 3:
+            return None
+
+        last3 = data.iloc[-3:]
+        c1_high = float(last3.iloc[0]["high"])
+        c1_low = float(last3.iloc[0]["low"])
+        c3_high = float(last3.iloc[2]["high"])
+        c3_low = float(last3.iloc[2]["low"])
+
+        if swept_low and mss.direction == "BULLISH":
+            # Bullish FVG: c3 low > c1 high
+            if c3_low <= c1_high:
+                return None
+            fvg_top = c3_low
+            fvg_bottom = c1_high
+
+            entry = fvg_top  # limit order at FVG high
+            sl = manip_low   # below manipulation candle
+            risk = entry - sl
+            if risk <= 0:
+                return None
+
+            # TP = Asian High (opposite boundary)
+            tp_dist = asian_high - entry
+            if tp_dist > risk * 1.5:
+                tp = asian_high
+            else:
+                tp = entry + risk * rrr_fallback
+
+            return {
+                "direction": "BUY",
+                "entry": round(entry, 5),
+                "sl": round(sl, 5),
+                "tp": round(tp, 5),
+                "model": "AMD",
+                "fvg_top": fvg_top,
+                "fvg_bottom": fvg_bottom,
+            }
+
+        if swept_high and mss.direction == "BEARISH":
+            # Bearish FVG: c1 low > c3 high
+            if c1_low <= c3_high:
+                return None
+            fvg_top = c1_low
+            fvg_bottom = c3_high
+
+            entry = fvg_bottom  # limit order at FVG low
+            sl = manip_high     # above manipulation candle
+            risk = sl - entry
+            if risk <= 0:
+                return None
+
+            # TP = Asian Low (opposite boundary)
+            tp_dist = entry - asian_low
+            if tp_dist > risk * 1.5:
+                tp = asian_low
+            else:
+                tp = entry - risk * rrr_fallback
+
+            return {
+                "direction": "SELL",
+                "entry": round(entry, 5),
+                "sl": round(sl, 5),
+                "tp": round(tp, 5),
+                "model": "AMD",
+                "fvg_top": fvg_top,
+                "fvg_bottom": fvg_bottom,
+            }
+
+        return None
+
+    # ------------------------------------------------------------------
+    # Silver Bullet: Strict time window + DOL + MSS + FVG
+    # ------------------------------------------------------------------
+    @staticmethod
+    def check_silver_bullet(
+        df_ltf: pd.DataFrame,
+        df_liq: pd.DataFrame,
+        current_hour_utc: int,
+        current_minute: int,
+        swing_strength: int = 3,
+        rrr_fallback: float = 2.5,
+        use_closed_candles: bool = True,
+    ) -> Optional[dict]:
+        """ICT Silver Bullet strategy.
+
+        Active ONLY during specific 1-hour windows:
+        - NY AM:  15:00-16:00 UTC (10:00-11:00 EST)
+        - London: 08:00-09:00 UTC (03:00-04:00 EST)
+        - NY PM:  19:00-20:00 UTC (14:00-15:00 EST)
+
+        Steps:
+        1. Identify Draw on Liquidity (DOL) — nearest unswept high/low
+        2. Wait for MSS (market structure shift)
+        3. Detect FVG after MSS
+        4. Entry at FVG boundary, TP at DOL
+
+        Returns setup dict or None.
+        """
+        # Strict time window check
+        in_window = False
+        if current_hour_utc == 15 and current_minute < 60:   # NY AM
+            in_window = True
+        elif current_hour_utc == 8 and current_minute < 60:   # London
+            in_window = True
+        elif current_hour_utc == 19 and current_minute < 60:  # NY PM
+            in_window = True
+
+        if not in_window:
+            return None
+
+        data = SMCStrategy.closed_candles(df_ltf, use_closed_candles)
+        if len(data) < 20:
+            return None
+
+        # --- Step 1: Find DOL (Draw on Liquidity) ---
+        # Use liquidity timeframe to find nearest unswept levels
+        swing_highs, swing_lows = SMCStrategy.find_swing_levels(
+            df_liq, strength=swing_strength, use_closed_candles=use_closed_candles)
+
+        current_price = float(data.iloc[-1]["close"])
+
+        dol_high = None
+        dol_low = None
+        above = [h for h in swing_highs if h > current_price]
+        below = [l for l in swing_lows if l < current_price]
+        if above:
+            dol_high = min(above)  # nearest unswept high
+        if below:
+            dol_low = max(below)   # nearest unswept low
+
+        if dol_high is None and dol_low is None:
+            return None
+
+        # --- Step 2: Detect MSS ---
+        mss = SMCStrategy.detect_structure_shift(
+            df_ltf, swing_strength=swing_strength, lookback=30,
+            use_closed_candles=use_closed_candles)
+
+        if mss is None:
+            return None
+
+        # --- Step 3: Detect FVG ---
+        if len(data) < 3:
+            return None
+
+        c1_high = float(data.iloc[-3]["high"])
+        c1_low = float(data.iloc[-3]["low"])
+        c3_high = float(data.iloc[-1]["high"])
+        c3_low = float(data.iloc[-1]["low"])
+
+        if mss.direction == "BULLISH" and dol_high is not None:
+            # Bullish: FVG = c3 low > c1 high
+            if c3_low <= c1_high:
+                return None
+            fvg_top = c3_low
+            fvg_bottom = c1_high
+
+            entry = fvg_top
+            # SL = swing low before MSS
+            recent_lows = data.iloc[-15:]["low"].to_numpy(float)
+            sl = float(recent_lows.min())
+            risk = entry - sl
+            if risk <= 0:
+                return None
+
+            tp = dol_high
+            tp_dist = tp - entry
+            if tp_dist < risk * 1.5:
+                tp = entry + risk * rrr_fallback
+
+            return {
+                "direction": "BUY",
+                "entry": round(entry, 5),
+                "sl": round(sl, 5),
+                "tp": round(tp, 5),
+                "model": "SILVER_BULLET",
+                "dol": round(dol_high, 5),
+                "window": f"{current_hour_utc}:00 UTC",
+            }
+
+        if mss.direction == "BEARISH" and dol_low is not None:
+            # Bearish: FVG = c1 low > c3 high
+            if c1_low <= c3_high:
+                return None
+            fvg_top = c1_low
+            fvg_bottom = c3_high
+
+            entry = fvg_bottom
+            # SL = swing high before MSS
+            recent_highs = data.iloc[-15:]["high"].to_numpy(float)
+            sl = float(recent_highs.max())
+            risk = sl - entry
+            if risk <= 0:
+                return None
+
+            tp = dol_low
+            tp_dist = entry - tp
+            if tp_dist < risk * 1.5:
+                tp = entry - risk * rrr_fallback
+
+            return {
+                "direction": "SELL",
+                "entry": round(entry, 5),
+                "sl": round(sl, 5),
+                "tp": round(tp, 5),
+                "model": "SILVER_BULLET",
+                "dol": round(dol_low, 5),
+                "window": f"{current_hour_utc}:00 UTC",
+            }
