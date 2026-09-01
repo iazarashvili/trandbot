@@ -262,6 +262,24 @@ class MultiSymbolEngine:
             ctx.state.watch_start = df_ltf.iloc[-1]["time"]
             ctx.state.abandoned = False
 
+            # Notify: new zone entered
+            filters_list = []
+            if ctx.cfg.use_sweep_filter:
+                filters_list.append("Sweep")
+            if ctx.cfg.use_ifvg:
+                filters_list.append("IFVG")
+            if ctx.cfg.use_breaker_blocks:
+                filters_list.append("Breaker")
+            if ctx.cfg.use_premium_discount:
+                filters_list.append("P/D")
+            if ctx.cfg.use_structure_shift:
+                filters_list.append("MSS")
+            telegram_bot.notify_waiting_for_trade(
+                sym, poi.type,
+                round(float(poi.top), 5), round(float(poi.bottom), 5),
+                ctx.state.trend,
+                ", ".join(filters_list) if filters_list else "FVG only")
+
         if ctx.state.abandoned:
             return
 
