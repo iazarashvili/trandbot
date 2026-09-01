@@ -149,6 +149,9 @@ class MultiSymbolEngine:
         logger.info("Symbols: %s", ", ".join(self.contexts.keys()))
         logger.info("=" * 50)
 
+        self._cycle = 0
+        self._last_status = 0
+
         try:
             while self._running:
                 try:
@@ -164,7 +167,21 @@ class MultiSymbolEngine:
                         except Exception:
                             logger.exception("Error scanning %s — skipping.", sym)
 
-                    # Periodic status check for Telegram /status and /balance
+                    # Periodic status log every 5 minutes
+                    self._cycle += 1
+                    now = time.time()
+                    if now - self._last_status >= 300:
+                        self._last_status = now
+                        parts = []
+                        for sym, ctx in self.contexts.items():
+                            s = ctx.state
+                            poi_str = f"POI={'Y' if s.poi else 'N'}"
+                            trend_str = s.trend[:4]
+                            pos = self.connectors[sym].get_open_positions()
+                            pos_str = f"POS={len(pos)}" if pos else "POS=0"
+                            parts.append(f"{sym}({trend_str} {poi_str} {pos_str})")
+                        logger.info("Status: %s", " | ".join(parts))
+
                     self._handle_tg_status()
                     time.sleep(POLL_INTERVAL)
 
@@ -276,7 +293,83 @@ class MultiSymbolEngine:
         if setup is None:
             return
 
-        # 9. Invert if configured
+        # 9. ICT filters (Asian range, Premium/Discount, MSS, Breaker)
+        if ctx.cfg.use_asian_range:
+            asian = SMCStrategy.get_asian_range(df_ltf, use_closed_candles=USE_CLOSED_CANDLES_ONLY)
+            if asian is not None:
+                if not SMCStrategy.is_asian_range_swept(df_ltf, asian, poi.type):
+                    ctx.state.record_rejection("ASIAN_NOT_SWEPT")
+                    return
+
+        if ctx.cfg.use_premium_discount:
+            pd_zone = SMCStrategy.get_premium_discount(
+                df_ltf, lookback=50, use_closed_candles=USE_CLOSED_CANDLES_ONLY)
+            if not SMCStrategy.is_premium_discount_aligned(pd_zone, setup["direction"]):
+                ctx.state.record_rejection("WRONG_PD_ZONE")
+                return
+
+        if ctx.cfg.use_structure_shift:
+            mss = SMCStrategy.detect_structure_shift(
+                df_ltf, swing_strength=3, lookback=50,
+                use_closed_candles=USE_CLOSED_CANDLES_ONLY)
+            if mss is None:
+                ctx.state.record_rejection("NO_STRUCTURE_SHIFT")
+                return
+            # MSS/BOS direction must match trade direction
+            if setup["direction"] == "BUY" and mss.direction != "BULLISH":
+                ctx.state.record_rejection("MSS_WRONG_DIR")
+                return
+            if setup["direction"] == "SELL" and mss.direction != "BEARISH":
+                ctx.state.record_rejection("MSS_WRONG_DIR")
+                return
+
+        if ctx.cfg.use_breaker_blocks:
+            breaker = SMCStrategy.detect_breaker_block(
+                df_ltf, lookback=50, use_closed_candles=USE_CLOSED_CANDLES_ONLY)
+            if breaker is not None:
+                # If breaker exists and opposes our direction, skip
+                if setup["direction"] == "BUY" and breaker.type == "BEARISH":
+                    if setup["entry"] < breaker.top:
+                        ctx.state.record_rejection("BREAKER_BLOCK")
+                        return
+                elif setup["direction"] == "SELL" and breaker.type == "BULLISH":
+                    if setup["entry"] > breaker.bottom:
+                        ctx.state.record_rejection("BREAKER_BLOCK")
+                        return
+
+        if ctx.cfg.use_po3:
+            po3 = SMCStrategy.detect_po3(
+                df_ltf, use_closed_candles=USE_CLOSED_CANDLES_ONLY)
+            if po3 is not None:
+                # PO3 direction must match setup direction
+                if setup["direction"] == "BUY" and po3["direction"] != "BULLISH":
+                    ctx.state.record_rejection("PO3_WRONG_DIR")
+                    return
+                if setup["direction"] == "SELL" and po3["direction"] != "BEARISH":
+                    ctx.state.record_rejection("PO3_WRONG_DIR")
+                    return
+            else:
+                ctx.state.record_rejection("NO_PO3")
+                return
+
+        if ctx.cfg.use_ifvg:
+            ifvg = SMCStrategy.detect_ifvg(
+                df_ltf, lookback=50, use_closed_candles=USE_CLOSED_CANDLES_ONLY)
+            if ifvg is not None:
+                # IFVG opposes our direction = confirmation (support/resistance)
+                # IFVG same as our direction = warning
+                if setup["direction"] == "BUY" and ifvg["type"] == "BEARISH":
+                    # Bearish IFVG above us = resistance, skip
+                    if setup["entry"] < ifvg["top"]:
+                        ctx.state.record_rejection("IFVG_RESISTANCE")
+                        return
+                elif setup["direction"] == "SELL" and ifvg["type"] == "BULLISH":
+                    # Bullish IFVG below us = support, skip
+                    if setup["entry"] > ifvg["bottom"]:
+                        ctx.state.record_rejection("IFVG_SUPPORT")
+                        return
+
+        # 9b. Invert if configured
         if ctx.cfg.invert_signals:
             setup = SMCStrategy.invert(setup, ctx.cfg.rrr)
 

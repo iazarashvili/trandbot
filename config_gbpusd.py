@@ -15,5 +15,9 @@ NIGHT_END_HOUR = 13
 # Block Monday and Tuesday — both losing days on GBPUSD.
 BLOCKED_DAYS = [0, 1]  # 0=Monday, 1=Tuesday
 
+# Premium/Discount + IFVG: PF 1.25->inf, Net $10->$40, MaxDD 0% (2026-09-01)
+USE_PREMIUM_DISCOUNT = True
+USE_IFVG = True
+
 TRAILING_STOP_TRIGGER_PCT = 0.50
 TRAILING_STOP_DISTANCE_PCT = 0.30
