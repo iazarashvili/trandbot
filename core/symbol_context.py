@@ -66,6 +66,10 @@ class SymbolConfig:
     use_sweep_filter: bool = False
     use_asian_range: bool = False
     use_premium_discount: bool = False
+    # NOT WIRED: use_structure_shift, use_breaker_blocks, use_po3 and use_ifvg
+    # are loaded below but no executing path reads them.  The detectors exist in
+    # strategy.py and are exercised only by reports/test_ict_filters.py, so
+    # setting the corresponding flag in a symbol config changes nothing live.
     use_structure_shift: bool = False
     use_breaker_blocks: bool = False
     use_po3: bool = False

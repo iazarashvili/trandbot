@@ -1,13 +1,11 @@
 # tradingBot — MT5 SMC bot
 
-Automated Smart-Money-Concepts bot for MetaTrader 5. Finds a 15m point of
+Automated Smart-Money-Concepts bot for MetaTrader 5. Finds a **1H** point of
 interest (FVG overlapping an order block), waits for price to return to it,
-then takes a 1m market-structure-shift + FVG as the trigger.
+then takes a **5m** displacement FVG as the trigger. Runs on BTCUSD, XAUUSD,
+GBPUSD and EURUSD, each with its own measured configuration.
 
-**It currently trades its own signals backwards.** That is deliberate and
-measured — see [Configuration decisions](#configuration-decisions).
-
-Last worked on: **2026-08-17**.
+Last worked on: **2026-09-09**.
 
 ---
 
@@ -16,22 +14,27 @@ Last worked on: **2026-08-17**.
 ```powershell
 # credentials live in .env (git-ignored) — never in config.py
 copy .env.example .env      # then fill in MT5_LOGIN / MT5_PASSWORD / MT5_SERVER
+                            # optional: TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
 
 env\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
 - Virtualenv is `env/` (Python 3.14). Always invoke it explicitly:
   `E:\trading\tradingBot\env\Scripts\python.exe`.
-- Live account is an **Exness demo/trial** (`Exness-MT5Trial15`), balance ~$128.
+- Live account is an **Exness demo/trial** (`Exness-MT5Trial15`).
 - ⚠️ The MT5 password was hard-coded in `config.py` before 2026-08-17 and is
   still in use. It should be rotated.
 
 ## Running
 
+`core/engine.py` is the only live runner.
+
 ```powershell
-env\Scripts\python.exe main.py                    # the bot
-env\Scripts\python.exe test_conn.py               # connection smoke test
-env\Scripts\python.exe -m unittest discover -s tests -t .   # 30 tests, no MT5 needed
+env\Scripts\python.exe -m core.engine                    # all symbols
+env\Scripts\python.exe -m core.engine --symbols BTCUSD   # a subset
+
+env\Scripts\python.exe test_conn.py                      # connection smoke test
+env\Scripts\python.exe -m unittest discover -s tests -t . # 30 tests, no MT5 needed
 ```
 
 **MT5 must be running with the "Algo Trading" button ON (Ctrl+E).** Without it
@@ -42,58 +45,128 @@ every order is rejected with retcode 10027 and nothing else looks wrong.
 
 | File | Role |
 |---|---|
-| `main.py` | Poll loop, position management, order placement. 4-space indent. |
+| `core/engine.py` | **Current live engine.** One MT5 connection, one loop, all symbols. Tries several strategies per scan; first valid signal wins. |
+| `core/symbol_context.py` | `SymbolConfig` (loads `config_<symbol>.py`), `SymbolSpec` (broker facts), `SymbolState` (per-symbol POI/risk/rejection state). |
+| `risk/risk_manager.py` | Lot sizing, dollar cap, portfolio risk, spread check — `validate_entry()` gates every entry in the engine. |
+| `telegram_bot.py` | Telegram dashboard: trade notifications plus `/status`, `/close <SYM>`, `/closeall`. Silently inert without the env vars. |
 | `strategy.py` | Pure functions over DataFrames — no I/O. All the trading logic. |
 | `mt5_connector.py` | Every broker-specific concern: digits, volume steps, stop levels, filling modes, retcodes. |
-| `config.py` | All tunables. Credentials read from `.env`. |
+| `config.py` | Shared defaults. Credentials read from `.env`. |
+| `config_<symbol>.py` | Per-symbol overrides (`from config import *` then override). |
 | `tests/test_strategy.py` | 30 unit tests on the pure strategy functions. |
 | `reports/engine.py` | Backtest harness. Drives the *same* strategy functions — never reimplements them. |
-| `reports/build_report.py` | Generates `backtest_report.html` from the engine's JSON. |
+| `reports/build_full_report.py` | Generates `reports/multi_strategy_report.html` — all strategies on all symbols. The one committed report. |
+| `reports/build_report.py` | Generates `backtest_report.html` from the engine's JSON. Needs a fresh engine run first (see below). |
+| `core/persistence.py` | SQLite state store — **written but not imported anywhere.** State does not survive a restart today. |
 
 ---
 
-## Configuration decisions
+## Where configuration comes from
 
-These were measured, not guessed. **Don't re-propose the rejected ones** —
-they've been tested on 34 days of real M1 history.
+`core/engine.py` reads every per-symbol setting through
+`SymbolConfig.load()` (`core/symbol_context.py:91`), which imports
+`config_<symbol>.py` and falls back to `config.py`. There is no second path —
+`main.py` and `run_both.py`, which read only a handful of keys and traded
+XAUUSD/GBPUSD/EURUSD on settings measured and rejected for them, were deleted
+on 2026-09-09 (recoverable from git if ever needed).
 
-| Setting | Value | Why |
-|---|---|---|
-| `INVERT_SIGNALS` | `True` | Signals as generated lose at **every** RRR from 1:1 to 1:4; inverted wins at every one. Reverting is this one flag. |
-| `RRR` | `2.5` | Peak of the sweep — but the standard error on expectancy is ±0.35R, so this is a pick, not an optimum. |
-| `STOP_MODE` | `"window"` | The structural alternatives measured **worse**. See below. |
-| `USE_TREND_FILTER` | `True` | Removing it costs +0.370R → +0.235R per trade. |
-| `USE_CLOSED_CANDLES_ONLY` | `True` | The forming candle repaints; signals appear and vanish within a minute. |
+`SymbolConfig` loads four flags that **no executing code reads**:
+`use_structure_shift`, `use_breaker_blocks`, `use_po3` and `use_ifvg`.
+`SMCStrategy.detect_ifvg`, `detect_breaker_block`, `detect_po3` and
+`detect_structure_shift` exist in `strategy.py` and are exercised only by
+`reports/test_ict_filters.py`. Setting `USE_IFVG = True` in a symbol config
+therefore does nothing live — the measured PF numbers in those config comments
+come from the research script, not from a wired filter.
 
-### Measured and rejected
+Config keys read by neither the engine nor the backtester:
+`TIME_STOP_BARS`, `TRAILING_STOP_TRIGGER_PCT`, `INVERT_SIGNALS` (loaded into
+`SymbolConfig.invert_signals`, never applied).
 
-| Idea | Result |
+---
+
+## How a trade happens (`core/engine.py:203 _scan_symbol`)
+
+1. **Manage first.** If the symbol has an open position, manage it and return
+   — one position per symbol, always.
+2. **Gate.** `SymbolContext.is_trading_allowed()`: weekend, blocked weekday,
+   night window, daily-loss limit, consecutive losses, daily trade count,
+   manual pause. Blocked reasons are counted in `state.rejections`.
+3. **Trend.** 1H close vs EMA(100) → `BULLISH` / `BEARISH` / `NEUTRAL`.
+4. **1H POI** (`detect_htf_poi`): newest unmitigated 3-candle FVG whose
+   preceding opposite-colour order block overlaps it, in the trend direction.
+   OB candles with range ≥ 2×ATR are skipped (LuxAlgo high-volatility filter).
+   A fully filled gap is dead; a partially filled one is still valid.
+5. **Strategies, first match wins:**
+   - **AMD** — Asian range → sweep → MSS → FVG.
+   - **Silver Bullet** — strict time window → draw on liquidity → MSS → FVG.
+   - **Sweep+FVG** — price inside the POI *and* a same-direction liquidity
+     sweep, then the 5m FVG confirmation.
+   - P/D+FVG and baseline POI→FVG are **disabled** (`core/engine.py:275`):
+     both lost money in the 2026-09-01 backtest. `_try_pd_fvg` and
+     `_try_base_fvg` are still there, just not called.
+6. **Zone patience** (`_check_zone`): once price enters a POI, the setup has
+   `MAX_LTF_WAIT_CANDLES` (15) 5m candles to appear. After that the zone is
+   abandoned until price leaves and returns.
+7. **Trigger** (`check_ltf_confirmation`): a 5m FVG in the POI direction, with
+   a "disrespect" veto — if the middle candle closed through the gap, no trade.
+   Stop from `STOP_MODE`; entry is the live market price, not the candle close.
+8. **TP**: nearest 15m swing (liquidity) if it is at least
+   `MIN_RRR_LIQUIDITY` away, else fixed `RRR`.
+9. **Risk** (`validate_entry` → `calculate_lot_size`): % of balance, dollar
+   cap, portfolio exposure, spread.
+10. **Manage** (`_manage_positions`): at `PARTIAL_TRIGGER_PCT` (80%) of the TP
+    distance, close `PARTIAL_CLOSE_PCT` (80%), move the stop to entry, and push
+    the runner's TP to the next liquidity level. If the position is at minimum
+    lot and cannot be split, just move the stop to break-even.
+
+`INVERT_SIGNALS` is **False** — signals are traded as generated. See
+[historical findings](#historical-findings-m15m1-era) for when it was not.
+
+---
+
+## Per-symbol configuration
+
+Each `config_<symbol>.py` starts from `config.py` and overrides. Every entry
+below carries a measurement and a date in the file — keep that convention.
+
+| | BTCUSD | XAUUSD | GBPUSD | EURUSD |
+|---|---|---|---|---|
+| magic | 100200 | 100201 | 100202 | 100203 |
+| `STOP_MODE` | `window` | `ob` | `ob` | `ob` |
+| `RRR` | 3.0 | 3.5 | 3.0 | 3.0 |
+| session (UTC) | no night filter | none | 13:00–21:00 | 13:00–21:00 |
+| blocked days | — | Friday | Mon, Tue | — |
+| risk | 1% | 1%, $40 cap | 1% | 1% |
+| extras | `USE_IFVG` (inert) | sweep filter, BE @2R, no liquidity TP, no partial | P/D filter, `USE_IFVG` (inert), trailing | trailing |
+
+**Judge every change on expectancy in R, never on net dollars** — a config that
+risks more per trade will show a bigger dollar total while being worse.
+
+---
+
+## Historical findings (M15/M1 era)
+
+Measured on 34 days of M1 history on **2026-08-17**, when the bot ran M15 zones
+with an M1 trigger and `INVERT_SIGNALS = True`. The timeframes changed to
+H1/M5 on 2026-08-20 (the user's manual approach, and the bot had not fired in
+two days), and inversion was turned off afterwards. These numbers describe the
+old configuration — they are kept because the *reasoning* still applies, not
+because they still hold.
+
+| Idea | Result then |
 |---|---|
-| **Structural stop** (behind the swing the MSS broke, or behind the POI) | `swing` −0.045R, `zone` +0.050R vs `window` **+0.370R**. Implemented as `STOP_MODE` options; both lose. The bot fades its own signal, so the stop sits where price is heading — tightening it onto structure just feeds the loss column. |
-| **One shot per zone** (a zone that produced a loss doesn't re-fire) | +0.370R → +0.273R. No evidence it helps. |
+| **Structural stop** (`swing`, `zone`) | −0.045R / +0.050R vs `window` +0.370R |
+| **One shot per zone** | +0.370R → +0.273R |
+| **Removing the trend filter** | +0.370R → +0.235R |
+| **Removing the 15m POI layer** | +0.370R → **−0.169R** over 278 trades |
 
-`zone` mode shows a *higher dollar total* purely because it risks 2.3× as much
-per trade. **Judge every change on expectancy in R, never on net dollars.**
+The 1m trigger alone was worth −0.08R over 389 trades: **the HTF zones carried
+the entire result.** That is the one finding with real sample size behind it,
+and the reason the POI layer should not be "simplified" away.
 
-### Where the edge lives
-
-Ablation (`python reports/engine.py --ablate`):
-
-| Layer removed | Trades | expR inverted |
-|---|---|---|
-| nothing (full strategy) | 23 | **+0.370** |
-| trend filter | 34 | +0.235 |
-| **15m POI zones** | 278 | **−0.169** |
-
-The 1m trigger on its own is worth −0.08R over 389 trades. **The 15m zones
-carry the entire result.** Do not "simplify" that layer away.
-
-### Honest size of the result
-
-23 trades. Under the null that each trade is a coin with the 28.6% win chance
-a 1:2.5 target needs, you'd see 9+ wins **18% of the time** by luck. The only
-statistically solid number in the whole study is the 389-trade ablation run.
-Treat the configuration as a hypothesis to test forward.
+The headline +0.370R came from **23 trades**. Under the null that each is a
+coin with the 28.6% win chance a 1:2.5 target needs, 9+ wins happens 18% of the
+time by luck. Treat any configuration here as a hypothesis to test forward.
 
 ---
 
@@ -113,16 +186,38 @@ env\Scripts\python.exe reports\engine.py --refresh        # re-pull history from
 env\Scripts\python.exe reports\build_report.py            # rebuild the HTML report
 ```
 
+`reports/` also holds one-off research scripts (`test_ict_filters.py`,
+`run_6m_all.py`, `test_xau_*.py`, …). They are where the per-symbol config
+numbers come from. **A result from a research script is not a wired feature** —
+check that the executing path actually reads the flag before believing it.
+
 Fidelity rules the engine holds to — preserve these in any change:
 
 - Decisions on the close of bar `t`, execution at the open of `t+1`. No lookahead.
 - MT5 candles are **bid**. A long fills at ask and exits on bid; a short fills
   at bid and exits on ask. The spread asymmetry is real and carried through.
-- One position at a time, exactly like `main.py`.
+- One position at a time, exactly like the live engine.
 - A bar touching both stop and target is scored as the **loss**.
 - Not modelled: commission, swap, slippage beyond spread, intrabar tick order.
 
-Report: `reports/backtest_report.html`, also published at
+Only `reports/multi_strategy_report.html` is committed. Every other generated
+output — `backtest_report.html` and all the `*.json` intermediates — was deleted
+on 2026-09-09 and is now git-ignored; the scripts that produce them are all
+still there.
+
+`build_report.py` reads five JSON files that no longer exist in the tree, so it
+needs the engine run first:
+
+```powershell
+env\Scripts\python.exe reports\engine.py --out bt_sig_rrr3.json
+env\Scripts\python.exe reports\engine.py --rrr 2.5 --invert --out final.json
+env\Scripts\python.exe reports\engine.py --sweep      # writes sweep_rrr.json
+env\Scripts\python.exe reports\engine.py --stops      # writes stop_rules.json
+env\Scripts\python.exe reports\engine.py --ablate     # writes ablation.json
+env\Scripts\python.exe reports\build_report.py
+```
+
+The old single-symbol report is published at
 <https://claude.ai/code/artifact/e2076137-0a1c-4f90-8825-9daabe54f835>
 (republish with that URL to keep the link stable).
 
@@ -157,19 +252,27 @@ not close on shutdown.
   candle close as the price.
 - Config changes that affect trading behaviour get a comment recording **what
   was measured** and the number, like the existing ones.
+- A new `SymbolConfig` field is only half the work — something in
+  `core/engine.py` has to read it, or it joins the dead-flag list above.
 
 ## Open items
 
-Two ideas not yet tested. Both change *logic* rather than a parameter, so the
-overfitting risk is lower than another parameter sweep:
+1. **Wire or delete the dead flags.** `use_ifvg`, `use_structure_shift`,
+   `use_breaker_blocks`, `use_po3` are loaded and ignored. `USE_IFVG` in
+   particular is set in two symbol configs with a measured comment, which reads
+   as if it were live. Wiring it changes live behaviour on BTCUSD and GBPUSD —
+   it is a decision, not a cleanup.
+2. **`core/persistence.py` is not imported.** Consecutive-loss counts, daily
+   P/L and trade counts reset on every restart, so the risk limits are weaker
+   than they look.
+3. **Take profit at a structural level** instead of a fixed R multiple, and
+   skip the trade when the level is closer than ~1.5R. Partly implemented as
+   the liquidity TP; the skip rule is not.
+4. **Zone quality filter** — require real displacement in the FVG (gap size vs
+   ATR), cap zone width, reject stale zones. `detect_htf_poi` has the 2×ATR
+   volatility filter but no other quality test.
 
-1. **Take profit at a structural level** instead of a fixed R multiple — the
-   nearest opposing swing / liquidity pool, skipping the trade when that level
-   is closer than ~1.5R. The 19% win rate at 1:3 suggests price systematically
-   fails to reach an arithmetic target.
-2. **Zone quality filter** — require real displacement in the FVG (gap size vs
-   ATR), cap zone width, and reject stale zones. `detect_htf_poi` currently
-   takes the most recent unmitigated zone with no quality test at all.
-
-Not enabled, available if wanted: `USE_RISK_BASED_LOT`, `MAX_SPREAD_POINTS`,
-`USE_BREAKEVEN` — all default-off in `config.py` with notes on when they'd help.
+Not enabled, available if wanted: `MAX_SPREAD_POINTS` (read by
+`risk/risk_manager.py:140`). `TIME_STOP_BARS` and `TRAILING_STOP_TRIGGER_PCT`
+have config entries and notes but no implementation anywhere — enabling them
+does nothing.

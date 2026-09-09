@@ -17,6 +17,8 @@ BLOCKED_DAYS = [0, 1]  # 0=Monday, 1=Tuesday
 
 # Premium/Discount + IFVG: PF 1.25->inf, Net $10->$40, MaxDD 0% (2026-09-01)
 USE_PREMIUM_DISCOUNT = True
+# NOT WIRED — see the note in config_btcusd.py.  USE_PREMIUM_DISCOUNT is read
+# by core/engine.py; USE_IFVG is loaded and ignored.
 USE_IFVG = True
 
 TRAILING_STOP_TRIGGER_PCT = 0.50

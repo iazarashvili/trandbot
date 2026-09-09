@@ -14,4 +14,7 @@ NIGHT_END_HOUR = 23
 BLOCKED_DAYS = []
 
 # IFVG filter: PF 1.23->1.60, WR 27->34%, Net x2, MaxDD 3.5->2.3% (2026-09-01)
+# NOT WIRED — measured in reports/test_ict_filters.py only.  SymbolConfig loads
+# this flag (core/symbol_context.py:119) but no executing path reads it, so it
+# currently has no effect on live trading or on reports/engine.py.
 USE_IFVG = True

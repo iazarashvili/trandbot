@@ -14,7 +14,7 @@ Fidelity rules:
     lookahead.
   * MT5 candles are BID.  A long fills at ask and exits on bid; a short fills
     at bid and exits on ask, so the spread asymmetry is carried through.
-  * One position at a time, exactly like main.py.
+  * One position at a time per symbol, exactly like core/engine.py.
   * A bar touching both stop and target is scored as the loss.
 
 Not modelled: commission, swap, slippage beyond the spread, intrabar tick order.
