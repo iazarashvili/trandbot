@@ -74,10 +74,10 @@ LTF_CANDLES_LOOKBACK: int = 100
 # peaked at 2.5.  The peak itself is not meaningful — with ~23 trades the
 # standard error on expectancy is about ±0.35R, so every value in the sweep
 # sits inside one error bar of every other.  2.5 is a reasonable pick, not a
-# measured optimum.  See reports/sweep_rrr.json.
+# measured optimum.  Regenerate the sweep with `reports/engine.py --sweep`.
 RRR: float = 3.0
 
-# Stop placement.  Measured on the same data (reports/stop_rules.json):
+# Stop placement.  Measured on the same data (`reports/engine.py --stops`):
 #   "window"  extreme of the last 10 M1 candles — expR +0.370  <- best
 #   "swing"   extreme since the swing the MSS broke   — expR -0.045
 #   "zone"    never tighter than the far side of the POI — expR +0.050
