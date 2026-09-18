@@ -25,3 +25,7 @@ reports/_history.pkl
 # reports/multi_strategy_report.html is the one committed report.
 reports/*.json
 reports/backtest_report.html
+
+# Back_test cache and results (regenerate with: python -m back_test.engine --refresh)
+back_test/_cache_*.pkl
+back_test/results_*.json

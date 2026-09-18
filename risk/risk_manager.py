@@ -155,36 +155,32 @@ def check_spread(ctx: SymbolContext) -> Optional[str]:
 
 def validate_entry(ctx: SymbolContext, direction: str,
                    entry: float, sl: float, tp: float) -> Optional[str]:
-    """Run all pre-trade risk checks. Returns rejection reason or None."""
-    # 1. Time/session filters
-    import datetime
-    now = datetime.datetime.now(datetime.timezone.utc)
-    ctx.state.reset_daily(now.strftime("%Y-%m-%d"))
-    time_block = ctx.is_trading_allowed(now)
-    if time_block:
-        return time_block
+    """Run pre-trade risk checks. Returns rejection reason or None.
 
-    # 2. Spread
+    Note: time/session gates and lot sizing are handled by the engine before
+    this is called — this function checks spread, portfolio risk, dollar cap,
+    and minimum R:R only.
+    """
+    # 1. Spread
     spread_block = check_spread(ctx)
     if spread_block:
         return spread_block
 
-    # 3. Portfolio risk
+    # 2. Portfolio risk
     port_block = check_portfolio_risk()
     if port_block:
         return port_block
 
-    # 4. Calculate lot size
+    # 3. Per-symbol risk cap (use the lots the engine will actually trade)
     lots = calculate_lot_size(ctx, entry, sl)
     if lots is None:
         return "SIZING_FAILED"
 
-    # 5. Per-symbol risk cap
     risk_block = check_max_risk_usd(ctx, lots, entry, sl)
     if risk_block:
         return risk_block
 
-    # 6. RR check
+    # 4. RR check
     risk_dist = abs(entry - sl)
     reward_dist = abs(tp - entry)
     rr = reward_dist / risk_dist if risk_dist > 0 else 0

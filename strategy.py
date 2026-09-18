@@ -276,7 +276,15 @@ class SMCStrategy:
         ema_period: int = 100,
         use_closed_candles: bool = True,
     ) -> Optional[ZonePOI]:
-        """Finds the most recent unmitigated 15m FVG + Order Block in trend."""
+        """Finds the most recent unmitigated FVG + Order Block in trend.
+
+        OB detection follows LuxAlgo logic:
+        - The OB is the most extreme bar in a window before the FVG, not
+          necessarily an opposite-color candle.
+        - High-volatility bars (range >= 2*ATR) use inverted parsed values
+          instead of being skipped.
+        - Small FVGs (gap < 10% of ATR) are filtered as noise.
+        """
         df = SMCStrategy.closed_candles(df_htf, use_closed_candles)
         if len(df) < 4:
             return None
@@ -287,61 +295,95 @@ class SMCStrategy:
             else "NEUTRAL"
         )
 
-        # High-volatility filter (LuxAlgo): skip OB candles with range >= 2*ATR
-        ranges = (df["high"] - df["low"]).to_numpy(float)
+        highs_arr = df["high"].to_numpy(float)
+        lows_arr = df["low"].to_numpy(float)
+        ranges = highs_arr - lows_arr
         atr = float(pd.Series(ranges).rolling(min(200, len(df))).mean().iloc[-1])
+
+        # FVG threshold: filter gaps smaller than 10% of ATR (noise)
+        fvg_min_size = atr * 0.1
+
+        # LuxAlgo high-vol inversion: on volatile bars, parsed high/low swap
+        high_vol = ranges >= 2 * atr
+        parsed_highs = np.where(high_vol, lows_arr, highs_arr)
+        parsed_lows = np.where(high_vol, highs_arr, lows_arr)
+
+        # How many bars before the FVG to search for the OB
+        _OB_SEARCH_DEPTH = 5
 
         # Walk backwards so the newest qualifying zone wins.
         for i in range(len(df) - 1, 2, -1):
             c1, c3 = df.iloc[i - 2], df.iloc[i]
-            ob_candle = df.iloc[i - 3]
-
-            # Skip high-volatility OB candles (LuxAlgo filter)
-            ob_range = float(ob_candle["high"] - ob_candle["low"])
-            if ob_range >= 2 * atr:
-                continue
 
             # ----------------------------------------------------------
             # BULLISH POI (trend must be BULLISH, or filter is off)
             # ----------------------------------------------------------
             if (trend == "BULLISH" or not use_trend_filter) and c3["low"] > c1["high"]:
-                fvg_bottom = c1["high"]
-                fvg_top = c3["low"]
+                fvg_bottom = float(c1["high"])
+                fvg_top = float(c3["low"])
 
-                if ob_candle["close"] < ob_candle["open"]:  # last down candle
-                    ob_top = max(ob_candle["high"], ob_candle["open"])
-                    ob_bottom = ob_candle["low"]
+                if (fvg_top - fvg_bottom) < fvg_min_size:
+                    continue
 
-                    if fvg_bottom <= ob_top and not SMCStrategy._is_fvg_mitigated(
-                        df, i, "BULLISH", fvg_top, fvg_bottom
-                    ):
-                        return ZonePOI(
-                            type="BULLISH",
-                            top=max(fvg_top, ob_top),
-                            bottom=min(fvg_bottom, ob_bottom),
-                            index=i,
-                        )
+                # Find OB: bar with lowest low in window before FVG
+                ob_start = max(0, i - 2 - _OB_SEARCH_DEPTH)
+                best_ob = None
+                best_extreme = float("inf")
+
+                for j in range(ob_start, i - 2):
+                    ob_top_j = max(float(parsed_highs[j]), float(parsed_lows[j]))
+                    ob_bot_j = min(float(parsed_highs[j]), float(parsed_lows[j]))
+
+                    # OB must overlap the FVG
+                    if fvg_bottom <= ob_top_j and ob_bot_j < best_extreme:
+                        best_extreme = ob_bot_j
+                        best_ob = (ob_top_j, ob_bot_j)
+
+                if best_ob is not None and not SMCStrategy._is_fvg_mitigated(
+                    df, i, "BULLISH", fvg_top, fvg_bottom
+                ):
+                    ob_top, ob_bottom = best_ob
+                    return ZonePOI(
+                        type="BULLISH",
+                        top=max(fvg_top, ob_top),
+                        bottom=min(fvg_bottom, ob_bottom),
+                        index=i,
+                    )
 
             # ----------------------------------------------------------
             # BEARISH POI (trend must be BEARISH, or filter is off)
             # ----------------------------------------------------------
             if (trend == "BEARISH" or not use_trend_filter) and c3["high"] < c1["low"]:
-                fvg_top = c1["low"]
-                fvg_bottom = c3["high"]
+                fvg_top = float(c1["low"])
+                fvg_bottom = float(c3["high"])
 
-                if ob_candle["close"] > ob_candle["open"]:  # last up candle
-                    ob_top = ob_candle["high"]
-                    ob_bottom = min(ob_candle["low"], ob_candle["close"])
+                if (fvg_top - fvg_bottom) < fvg_min_size:
+                    continue
 
-                    if fvg_top >= ob_bottom and not SMCStrategy._is_fvg_mitigated(
-                        df, i, "BEARISH", fvg_top, fvg_bottom
-                    ):
-                        return ZonePOI(
-                            type="BEARISH",
-                            top=max(fvg_top, ob_top),
-                            bottom=min(fvg_bottom, ob_bottom),
-                            index=i,
-                        )
+                # Find OB: bar with highest high in window before FVG
+                ob_start = max(0, i - 2 - _OB_SEARCH_DEPTH)
+                best_ob = None
+                best_extreme = float("-inf")
+
+                for j in range(ob_start, i - 2):
+                    ob_top_j = max(float(parsed_highs[j]), float(parsed_lows[j]))
+                    ob_bot_j = min(float(parsed_highs[j]), float(parsed_lows[j]))
+
+                    # OB must overlap the FVG
+                    if fvg_top >= ob_bot_j and ob_top_j > best_extreme:
+                        best_extreme = ob_top_j
+                        best_ob = (ob_top_j, ob_bot_j)
+
+                if best_ob is not None and not SMCStrategy._is_fvg_mitigated(
+                    df, i, "BEARISH", fvg_top, fvg_bottom
+                ):
+                    ob_top, ob_bottom = best_ob
+                    return ZonePOI(
+                        type="BEARISH",
+                        top=max(fvg_top, ob_top),
+                        bottom=min(fvg_bottom, ob_bottom),
+                        index=i,
+                    )
 
         return None
 
@@ -533,6 +575,10 @@ class SMCStrategy:
         structure = df.iloc[-_LTF_STRUCTURE_LOOKBACK:-_LTF_FVG_CANDLES]
         window = df.iloc[-_LTF_STRUCTURE_LOOKBACK:]
 
+        # FVG threshold: filter gaps smaller than 10% of local ATR
+        ltf_atr = float((window["high"] - window["low"]).mean())
+        fvg_min_size = ltf_atr * 0.1
+
         if not SMCStrategy.is_zone_in_play(poi, df, lookback=1):
             return None
 
@@ -541,6 +587,8 @@ class SMCStrategy:
             fvg_top = float(signal["low"])          # candle 3 low
             has_fvg = fvg_top > fvg_bottom
             if not has_fvg:
+                return None
+            if (fvg_top - fvg_bottom) < fvg_min_size:
                 return None
 
             # FVG disrespect: if any candle after FVG creation closed below
@@ -568,6 +616,8 @@ class SMCStrategy:
             fvg_bottom = float(signal["high"])      # candle 3 high
             has_fvg = fvg_top > fvg_bottom
             if not has_fvg:
+                return None
+            if (fvg_top - fvg_bottom) < fvg_min_size:
                 return None
 
             # FVG disrespect: if any candle after FVG creation closed above

@@ -163,7 +163,7 @@ MAX_SPREAD_POINTS: int = 0
 
 # Move the stop loss to break-even once the trade is this many R in profit.
 USE_BREAKEVEN: bool = False
-BREAKEVEN_TRIGGER_R: float = 1.0
+BREAKEVEN_R: float = 2.0
 
 # Partial close.  When price reaches PARTIAL_TRIGGER_PCT of the TP distance,
 # close PARTIAL_CLOSE_PCT of the position, move stop to entry, and shift TP

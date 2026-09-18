@@ -17,7 +17,8 @@
       "Bash(env/Scripts/python.exe reports/engine.py --sweep)",
       "Bash(env/Scripts/python.exe reports/engine.py --rrr 3.0 --out bt_sig_rrr3.json)",
       "Bash(env/Scripts/python.exe reports/engine.py --invert --rrr 2.5 --out final.json~)",
-      "Bash(env/Scripts/python.exe reports/engine.py --ablate --rrr 2.5)"
+      "Bash(env/Scripts/python.exe reports/engine.py --ablate --rrr 2.5)",
+      "Bash(env/Scripts/python.exe -m unittest discover -s tests -t .)"
     ]
   }
 }

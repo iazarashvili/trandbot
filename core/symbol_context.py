@@ -81,6 +81,11 @@ class SymbolConfig:
     partial_trigger_pct: float = 0.80
     partial_close_pct: float = 0.80
     max_spread_points: int = 0
+    # Session/strategy filters (from backtest analysis 2026-09-16)
+    blocked_sb_hours: list = field(default_factory=list)  # UTC hours where Silver Bullet is skipped
+    blocked_amd_hours: list = field(default_factory=list)  # UTC hours where AMD is skipped
+    blocked_trends: list = field(default_factory=list)     # trend directions to skip ("BEARISH", "BULLISH")
+    max_ob_risk_px: float = 0.0                            # max OB stop width in price; 0=disabled
     # Phase 1: risk
     max_consecutive_losses: int = 3
     max_daily_loss_pct: float = 4.0
@@ -128,6 +133,10 @@ class SymbolConfig:
             partial_trigger_pct=getattr(mod, "PARTIAL_TRIGGER_PCT", 0.80),
             partial_close_pct=getattr(mod, "PARTIAL_CLOSE_PCT", 0.80),
             max_spread_points=getattr(mod, "MAX_SPREAD_POINTS", 0),
+            blocked_sb_hours=list(getattr(mod, "BLOCKED_SB_HOURS", [])),
+            blocked_amd_hours=list(getattr(mod, "BLOCKED_AMD_HOURS", [])),
+            blocked_trends=list(getattr(mod, "BLOCKED_TRENDS", [])),
+            max_ob_risk_px=getattr(mod, "MAX_OB_RISK_PX", 0.0),
             max_consecutive_losses=getattr(mod, "MAX_CONSECUTIVE_LOSSES", 3),
             max_daily_loss_pct=getattr(mod, "MAX_DAILY_LOSS_PCT", 4.0),
             daily_loss_buffer_pct=getattr(mod, "DAILY_LOSS_BUFFER_PCT", 0.5),
@@ -155,6 +164,9 @@ class SymbolState:
     cooldown_until: Optional[pd.Timestamp] = None
     paused: bool = False
     pause_reason: str = ""
+
+    # Position tracking — used to detect when a position closes (SL/TP/manual)
+    last_position_ticket: Optional[int] = None
 
     # Rejection stats
     rejections: Dict[str, int] = field(default_factory=dict)
@@ -243,6 +255,12 @@ class SymbolContext:
         # Daily trade limit
         if self.state.trades_today >= self.cfg.max_trades_per_day:
             return "MAX_DAILY_TRADES"
+
+        # Cooldown after a trade
+        if self.state.cooldown_until is not None:
+            if now < self.state.cooldown_until:
+                return "COOLDOWN"
+            self.state.cooldown_until = None  # expired, clear it
 
         # Paused
         if self.state.paused:

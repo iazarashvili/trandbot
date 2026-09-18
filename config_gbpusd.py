@@ -16,10 +16,11 @@ NIGHT_END_HOUR = 13
 BLOCKED_DAYS = [0, 1]  # 0=Monday, 1=Tuesday
 
 # Premium/Discount + IFVG: PF 1.25->inf, Net $10->$40, MaxDD 0% (2026-09-01)
-USE_PREMIUM_DISCOUNT = True
-# NOT WIRED — see the note in config_btcusd.py.  USE_PREMIUM_DISCOUNT is read
-# by core/engine.py; USE_IFVG is loaded and ignored.
-USE_IFVG = True
+# NOT WIRED — _try_pd_fvg is disabled in engine (lost money in 2026-09-01 backtest).
+# USE_IFVG is loaded into SymbolConfig but no executing path reads it.
+# Trailing stop is not implemented — SymbolConfig does not load these fields.
+# Keeping the measurements here for reference if these features are ever wired.
 
-TRAILING_STOP_TRIGGER_PCT = 0.50
-TRAILING_STOP_DISTANCE_PCT = 0.30
+# Backtest 2026-09-16: SB at 15:xx = 31 trades, 29% WR, -$491.
+# SB at 19:xx = 15 trades, 47% WR, +$787. Block the losing window.
+BLOCKED_SB_HOURS = [15]
