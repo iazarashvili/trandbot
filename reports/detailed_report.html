@@ -1,0 +1,2437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Backtest Report — 12 Months</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0d1117; color: #c9d1d9; padding: 20px; }
+  h1 { color: #58a6ff; margin-bottom: 10px; }
+  h2 { color: #8b949e; margin: 30px 0 15px; border-bottom: 1px solid #21262d; padding-bottom: 8px; }
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }
+  .stat-card { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px; }
+  .stat-card .label { color: #8b949e; font-size: 12px; text-transform: uppercase; }
+  .stat-card .value { font-size: 24px; font-weight: bold; margin-top: 4px; }
+  .positive { color: #3fb950; }
+  .negative { color: #f85149; }
+  .neutral { color: #8b949e; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  th { background: #161b22; color: #8b949e; text-align: right; padding: 8px 12px; border-bottom: 2px solid #21262d; }
+  td { padding: 6px 12px; border-bottom: 1px solid #21262d; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  tr:hover { background: #161b22; }
+  .trade-win { background: rgba(63, 185, 80, 0.05); }
+  .trade-loss { background: rgba(248, 81, 73, 0.05); }
+  .chart-container { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 20px; margin: 20px 0; }
+  .sym-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+  .sym-BTCUSD { background: #f7931a20; color: #f7931a; }
+  .sym-GBPUSD { background: #2563eb20; color: #60a5fa; }
+  .sym-EURUSD { background: #7c3aed20; color: #a78bfa; }
+  .month-row-loss { background: rgba(248, 81, 73, 0.08); }
+  .summary-table { max-width: 700px; }
+  .summary-table td:last-child { font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h1>Backtest Report</h1>
+<p style="color:#8b949e">12 months | $50,000 start | RRR 2.0 | Swing SL | BTCUSD, GBPUSD, EURUSD</p>
+<p style="color:#8b949e">Period: 2025-10-24 — 2026-10-16</p>
+
+<h2>Overview</h2>
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="label">Net P&L</div>
+    <div class="value positive">$+13,574.28</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Return</div>
+    <div class="value positive">+27.1%</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Final Balance</div>
+    <div class="value">$63,574.28</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Total Trades</div>
+    <div class="value">189</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Win Rate</div>
+    <div class="value">52.4%</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Profit Factor</div>
+    <div class="value positive">1.7</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Max Drawdown</div>
+    <div class="value negative">$1,602.29 (3.0%)</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Avg Win / Avg Loss</div>
+    <div class="value">$333 / $215</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Best Win Streak</div>
+    <div class="value positive">6</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Worst Loss Streak</div>
+    <div class="value negative">7</div>
+  </div>
+</div>
+
+<h2>Per-Symbol Results</h2>
+<table class="summary-table">
+<tr><th>Symbol</th><th>Trades</th><th>Win%</th><th>PF</th><th>Net P&L</th><th>Max DD%</th><th>ExpR</th></tr>
+<tr>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>139</td><td>52.5%</td><td>1.74</td>
+  <td class="negative">$-39,285.75</td><td>2.8%</td>
+  <td>0.357R</td>
+</tr><tr>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>24</td><td>70.8%</td><td>3.42</td>
+  <td class="negative">$-46,518.22</td><td>0.8%</td>
+  <td>0.715R</td>
+</tr><tr>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>26</td><td>34.6%</td><td>0.82</td>
+  <td class="negative">$-50,621.83</td><td>4.0%</td>
+  <td>-0.116R</td>
+</tr></table>
+<h2>Equity Curve</h2>
+<div class="chart-container">
+  <svg width="900" height="300" viewBox="0 0 900 300">
+    <line x1="0" y1="285.0" x2="900" y2="285.0" stroke="#21262d" stroke-dasharray="4"/>
+    <polyline points="0.0,285.0 4.8,282.5 9.5,276.0 14.3,273.9 19.0,272.3 23.8,265.7 28.6,269.7 33.3,273.6 38.1,277.5 42.9,281.5 47.6,281.3 52.4,272.7 57.1,276.6 61.9,269.9 66.7,263.7 71.4,257.2 76.2,244.2 81.0,248.2 85.7,253.4 90.5,257.5 95.2,261.5 100.0,254.9 104.8,249.8 109.5,236.2 114.3,240.2 119.0,238.7 123.8,234.9 128.6,239.0 133.3,242.9 138.1,240.6 142.9,233.9 147.6,221.2 152.4,218.3 157.1,222.4 161.9,226.4 166.7,224.0 171.4,210.6 176.2,214.7 181.0,209.8 185.7,213.9 190.5,218.0 195.2,215.9 200.0,220.0 204.8,224.0 209.5,228.0 214.3,231.9 219.0,225.2 223.8,229.2 228.6,222.5 233.3,215.9 238.1,210.8 242.9,214.8 247.6,213.2 252.4,217.3 257.1,221.2 261.9,225.2 266.7,229.1 271.4,233.2 276.2,237.2 281.0,241.0 285.7,235.9 290.5,239.9 295.2,233.1 300.0,226.4 304.8,221.4 309.5,225.5 314.3,229.5 319.0,233.5 323.8,237.5 328.6,241.4 333.3,234.6 338.1,231.7 342.9,224.9 347.6,228.8 352.4,232.8 357.1,231.5 361.9,224.1 366.7,217.3 371.4,221.3 376.2,225.4 381.0,215.8 385.7,219.9 390.5,223.9 395.2,228.0 400.0,232.1 404.8,225.1 409.5,229.2 414.3,222.3 419.0,226.3 423.8,212.6 428.6,207.3 433.3,200.4 438.1,198.9 442.9,197.3 447.6,183.5 452.4,187.8 457.1,182.8 461.9,177.4 466.7,181.6 471.4,167.8 476.2,160.8 481.0,155.3 485.7,159.2 490.5,163.5 495.2,167.8 500.0,159.1 504.8,162.9 509.5,161.5 514.3,154.6 519.0,145.9 523.8,123.5 528.6,128.0 533.3,120.3 538.1,112.8 542.9,117.3 547.6,109.7 552.4,101.8 557.1,106.3 561.9,98.9 566.7,103.4 571.4,107.9 576.2,112.4 581.0,106.7 585.7,104.2 590.5,102.4 595.2,98.4 600.0,94.9 604.8,99.4 609.5,97.2 614.3,89.6 619.0,84.3 623.8,88.9 628.6,93.5 633.3,98.1 638.1,102.6 642.9,97.7 647.6,95.4 652.4,92.0 657.1,86.6 661.9,91.2 666.7,86.3 671.4,84.7 676.2,89.3 681.0,93.9 685.7,98.4 690.5,91.6 695.2,85.2 700.0,89.7 704.8,93.6 709.5,98.1 714.3,92.3 719.0,96.9 723.8,90.0 728.6,94.5 733.3,82.9 738.1,87.4 742.9,72.6 747.6,57.5 752.4,62.2 757.1,66.3 761.9,60.9 766.7,65.6 771.4,50.0 776.2,48.4 781.0,33.2 785.7,24.9 790.5,29.7 795.2,34.4 800.0,30.1 804.8,34.3 809.5,38.1 814.3,42.0 819.0,39.3 823.8,43.1 828.6,36.3 833.3,41.1 838.1,34.8 842.9,39.6 847.6,24.2 852.4,29.0 857.1,33.9 861.9,27.7 866.7,32.5 871.4,20.0 876.2,24.8 881.0,23.0 885.7,15.0 890.5,19.8 895.2,24.6 900.0,17.5" fill="none" stroke="#58a6ff" stroke-width="2"/>
+    <text x="5" y="15" fill="#8b949e" font-size="11">$63,702</text>
+    <text x="5" y="295" fill="#8b949e" font-size="11">$50,000</text>
+  </svg>
+</div>
+<h2>Monthly Performance</h2>
+<table>
+<tr><th>Month</th><th>Trades</th><th>Wins</th><th>Win%</th><th>P&L</th><th>Balance</th></tr>
+<tr>
+  <td>2025-10</td><td>3</td><td>3</td><td>100%</td>
+  <td class="positive">$+563.45</td><td>$50,563.45</td>
+</tr><tr>
+  <td>2025-11</td><td>11</td><td>6</td><td>55%</td>
+  <td class="positive">$+515.35</td><td>$51,078.80</td>
+</tr><tr>
+  <td>2025-12</td><td>14</td><td>7</td><td>50%</td>
+  <td class="positive">$+1,059.08</td><td>$52,137.88</td>
+</tr><tr>
+  <td>2026-01</td><td>13</td><td>8</td><td>62%</td>
+  <td class="positive">$+1,367.52</td><td>$53,505.40</td>
+</tr><tr class="month-row-loss">
+  <td>2026-02</td><td>13</td><td>5</td><td>38%</td>
+  <td class="negative">$-269.31</td><td>$53,236.09</td>
+</tr><tr class="month-row-loss">
+  <td>2026-03</td><td>17</td><td>6</td><td>35%</td>
+  <td class="negative">$-529.03</td><td>$52,707.06</td>
+</tr><tr>
+  <td>2026-04</td><td>27</td><td>15</td><td>56%</td>
+  <td class="positive">$+2,540.18</td><td>$55,247.24</td>
+</tr><tr>
+  <td>2026-05</td><td>10</td><td>6</td><td>60%</td>
+  <td class="positive">$+1,372.37</td><td>$56,619.61</td>
+</tr><tr>
+  <td>2026-06</td><td>7</td><td>5</td><td>71%</td>
+  <td class="positive">$+2,276.87</td><td>$58,896.48</td>
+</tr><tr>
+  <td>2026-07</td><td>26</td><td>16</td><td>62%</td>
+  <td class="positive">$+1,267.21</td><td>$60,163.69</td>
+</tr><tr>
+  <td>2026-08</td><td>20</td><td>8</td><td>40%</td>
+  <td class="positive">$+971.28</td><td>$61,134.97</td>
+</tr><tr>
+  <td>2026-09</td><td>19</td><td>9</td><td>47%</td>
+  <td class="positive">$+1,610.56</td><td>$62,745.53</td>
+</tr><tr>
+  <td>2026-10</td><td>9</td><td>5</td><td>56%</td>
+  <td class="positive">$+828.75</td><td>$63,574.28</td>
+</tr></table>
+<h2>All Trades</h2>
+<table>
+<tr><th>#</th><th>Symbol</th><th>Dir</th><th>Entry Time</th><th>Exit Time</th>
+<th>Entry</th><th>SL</th><th>TP</th><th>Vol</th><th>Risk$</th>
+<th>P&L</th><th>R</th><th>Balance</th><th>Exit</th><th>Bars</th></tr>
+<tr class="trade-win">
+  <td>1</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>BUY</td>
+  <td>2025-10-24 15:10</td><td>2025-10-27 23:45</td>
+  <td>1.16306</td><td>1.16306</td><td>1.16544</td>
+  <td>0.13</td><td>$199</td>
+  <td class="positive">$+125.95</td>
+  <td class="positive">+0.63R</td>
+  <td>$50,125.95</td>
+  <td>TP</td>
+  <td>390</td>
+</tr><tr class="trade-win">
+  <td>2</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>SELL</td>
+  <td>2025-10-24 13:55</td><td>2025-10-28 13:45</td>
+  <td>1.33391</td><td>1.33391</td><td>1.32493</td>
+  <td>0.09</td><td>$198</td>
+  <td class="positive">$+331.90</td>
+  <td class="positive">+1.68R</td>
+  <td>$50,457.85</td>
+  <td>TP</td>
+  <td>573</td>
+</tr><tr class="trade-win">
+  <td>3</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>SELL</td>
+  <td>2025-10-30 14:40</td><td>2025-10-31 01:25</td>
+  <td>1.31646</td><td>1.31646</td><td>1.31000</td>
+  <td>0.13</td><td>$200</td>
+  <td class="positive">$+105.60</td>
+  <td class="positive">+0.53R</td>
+  <td>$50,563.45</td>
+  <td>SL</td>
+  <td>129</td>
+</tr><tr class="trade-win">
+  <td>4</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2025-11-10 19:45</td><td>2025-11-10 19:55</td>
+  <td>105784.17000</td><td>105784.17000</td><td>106269.82000</td>
+  <td>0.09</td><td>$197</td>
+  <td class="positive">$+80.32</td>
+  <td class="positive">+0.41R</td>
+  <td>$50,643.77</td>
+  <td>SL</td>
+  <td>2</td>
+</tr><tr class="trade-win">
+  <td>5</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>BUY</td>
+  <td>2025-11-12 19:40</td><td>2025-11-13 15:35</td>
+  <td>1.15883</td><td>1.15883</td><td>1.16361</td>
+  <td>0.17</td><td>$198</td>
+  <td class="positive">$+333.26</td>
+  <td class="positive">+1.68R</td>
+  <td>$50,977.03</td>
+  <td>TP</td>
+  <td>239</td>
+</tr><tr class="trade-loss">
+  <td>6</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>BUY</td>
+  <td>2025-11-13 20:25</td><td>2025-11-14 11:10</td>
+  <td>1.16376</td><td>1.16094</td><td>1.16560</td>
+  <td>0.71</td><td>$200</td>
+  <td class="negative">$-200.22</td>
+  <td class="negative">-1.00R</td>
+  <td>$50,776.81</td>
+  <td>SL</td>
+  <td>176</td>
+</tr><tr class="trade-loss">
+  <td>7</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>BUY</td>
+  <td>2025-11-14 15:20</td><td>2025-11-14 15:45</td>
+  <td>1.16228</td><td>1.16093</td><td>1.16499</td>
+  <td>1.48</td><td>$200</td>
+  <td class="negative">$-199.80</td>
+  <td class="negative">-1.00R</td>
+  <td>$50,577.01</td>
+  <td>SL</td>
+  <td>5</td>
+</tr><tr class="trade-loss">
+  <td>8</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2025-11-18 09:10</td><td>2025-11-18 10:05</td>
+  <td>90917.47000</td><td>91452.95100</td><td>89586.69000</td>
+  <td>0.37</td><td>$198</td>
+  <td class="negative">$-198.13</td>
+  <td class="negative">-1.00R</td>
+  <td>$50,378.88</td>
+  <td>SL</td>
+  <td>11</td>
+</tr><tr class="trade-loss">
+  <td>9</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>BUY</td>
+  <td>2025-11-14 14:25</td><td>2025-11-19 10:50</td>
+  <td>1.31705</td><td>1.31033</td><td>1.33050</td>
+  <td>0.30</td><td>$202</td>
+  <td class="negative">$-201.60</td>
+  <td class="negative">-1.00R</td>
+  <td>$50,177.28</td>
+  <td>SL</td>
+  <td>817</td>
+</tr><tr class="trade-win">
+  <td>10</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>SELL</td>
+  <td>2025-11-20 14:15</td><td>2025-11-21 09:55</td>
+  <td>1.30863</td><td>1.30863</td><td>1.31000</td>
+  <td>0.08</td><td>$200</td>
+  <td class="positive">$+11.00</td>
+  <td class="positive">+0.06R</td>
+  <td>$50,188.28</td>
+  <td>TP</td>
+  <td>235</td>
+</tr><tr class="trade-win">
+  <td>11</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2025-11-21 11:40</td><td>2025-11-21 12:20</td>
+  <td>82511.97000</td><td>82511.97000</td><td>81153.51000</td>
+  <td>0.04</td><td>$196</td>
+  <td class="positive">$+436.55</td>
+  <td class="positive">+2.23R</td>
+  <td>$50,624.83</td>
+  <td>TP</td>
+  <td>8</td>
+</tr><tr class="trade-loss">
+  <td>12</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2025-11-21 12:30</td><td>2025-11-21 12:35</td>
+  <td>80848.13000</td><td>82497.74500</td><td>77548.90000</td>
+  <td>0.12</td><td>$198</td>
+  <td class="negative">$-197.95</td>
+  <td class="negative">-1.00R</td>
+  <td>$50,426.88</td>
+  <td>SL</td>
+  <td>1</td>
+</tr><tr class="trade-win">
+  <td>13</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2025-11-24 04:40</td><td>2025-11-24 05:10</td>
+  <td>86712.54000</td><td>86712.54000</td><td>87669.70000</td>
+  <td>0.09</td><td>$197</td>
+  <td class="positive">$+340.03</td>
+  <td class="positive">+1.73R</td>
+  <td>$50,766.91</td>
+  <td>TP</td>
+  <td>6</td>
+</tr><tr class="trade-win">
+  <td>14</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2025-11-24 13:55</td><td>2025-11-24 14:00</td>
+  <td>86264.48000</td><td>86264.48000</td><td>85901.43000</td>
+  <td>0.11</td><td>$199</td>
+  <td class="positive">$+311.89</td>
+  <td class="positive">+1.57R</td>
+  <td>$51,078.80</td>
+  <td>TP</td>
+  <td>1</td>
+</tr><tr class="trade-win">
+  <td>15</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>BUY</td>
+  <td>2025-11-26 17:50</td><td>2025-12-03 15:30</td>
+  <td>1.32247</td><td>1.32247</td><td>1.33260</td>
+  <td>0.08</td><td>$198</td>
+  <td class="positive">$+331.85</td>
+  <td class="positive">+1.68R</td>
+  <td>$51,410.65</td>
+  <td>TP</td>
+  <td>1410</td>
+</tr><tr class="trade-win">
+  <td>16</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2025-12-05 15:45</td><td>2025-12-05 16:05</td>
+  <td>91052.64000</td><td>91052.64000</td><td>89798.77800</td>
+  <td>0.06</td><td>$201</td>
+  <td class="positive">$+658.03</td>
+  <td class="positive">+3.28R</td>
+  <td>$52,068.68</td>
+  <td>TP</td>
+  <td>4</td>
+</tr><tr class="trade-loss">
+  <td>17</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>BUY</td>
+  <td>2025-12-04 19:40</td><td>2025-12-05 16:05</td>
+  <td>1.16538</td><td>1.16381</td><td>1.16852</td>
+  <td>1.27</td><td>$199</td>
+  <td class="negative">$-199.39</td>
+  <td class="negative">-1.00R</td>
+  <td>$51,869.29</td>
+  <td>SL</td>
+  <td>245</td>
+</tr><tr class="trade-loss">
+  <td>18</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>BUY</td>
+  <td>2025-12-18 15:45</td><td>2025-12-18 16:10</td>
+  <td>1.17292</td><td>1.17292</td><td>1.17000</td>
+  <td>0.26</td><td>$199</td>
+  <td class="negative">$-266.88</td>
+  <td class="negative">-1.34R</td>
+  <td>$51,602.41</td>
+  <td>TP</td>
+  <td>5</td>
+</tr><tr class="trade-loss">
+  <td>19</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2025-12-19 20:00</td><td>2025-12-19 20:35</td>
+  <td>87774.07000</td><td>88174.94200</td><td>86972.32600</td>
+  <td>0.51</td><td>$204</td>
+  <td class="negative">$-204.44</td>
+  <td class="negative">-1.00R</td>
+  <td>$51,397.97</td>
+  <td>SL</td>
+  <td>7</td>
+</tr><tr class="trade-loss">
+  <td>20</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2025-12-19 23:30</td><td>2025-12-19 23:35</td>
+  <td>88296.02000</td><td>88127.59800</td><td>88632.86400</td>
+  <td>1.21</td><td>$204</td>
+  <td class="negative">$-203.79</td>
+  <td class="negative">-1.00R</td>
+  <td>$51,194.18</td>
+  <td>SL</td>
+  <td>1</td>
+</tr><tr class="trade-win">
+  <td>21</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>BUY</td>
+  <td>2025-12-18 17:45</td><td>2025-12-22 17:35</td>
+  <td>1.33843</td><td>1.33843</td><td>1.34764</td>
+  <td>0.09</td><td>$198</td>
+  <td class="positive">$+332.67</td>
+  <td class="positive">+1.68R</td>
+  <td>$51,526.85</td>
+  <td>TP</td>
+  <td>572</td>
+</tr><tr class="trade-win">
+  <td>22</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2025-12-24 04:35</td><td>2025-12-24 11:05</td>
+  <td>87178.26000</td><td>87178.26000</td><td>86529.87000</td>
+  <td>0.15</td><td>$204</td>
+  <td class="positive">$+260.53</td>
+  <td class="positive">+1.28R</td>
+  <td>$51,787.38</td>
+  <td>SL</td>
+  <td>78</td>
+</tr><tr class="trade-win">
+  <td>23</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2025-12-24 13:15</td><td>2025-12-24 14:35</td>
+  <td>87254.93000</td><td>87254.93000</td><td>86792.70000</td>
+  <td>0.19</td><td>$204</td>
+  <td class="positive">$+691.26</td>
+  <td class="positive">+3.39R</td>
+  <td>$52,478.64</td>
+  <td>TP</td>
+  <td>16</td>
+</tr><tr class="trade-loss">
+  <td>24</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2025-12-24 17:00</td><td>2025-12-24 21:35</td>
+  <td>87227.00000</td><td>87738.75550</td><td>86203.48900</td>
+  <td>0.40</td><td>$205</td>
+  <td class="negative">$-204.70</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,273.94</td>
+  <td>SL</td>
+  <td>55</td>
+</tr><tr class="trade-win">
+  <td>25</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2025-12-25 14:25</td><td>2025-12-25 14:25</td>
+  <td>87580.42000</td><td>87580.42000</td><td>87475.70000</td>
+  <td>0.31</td><td>$206</td>
+  <td class="positive">$+75.92</td>
+  <td class="positive">+0.37R</td>
+  <td>$52,349.86</td>
+  <td>SL</td>
+  <td>0</td>
+</tr><tr class="trade-win">
+  <td>26</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2025-12-26 08:55</td><td>2025-12-26 14:35</td>
+  <td>88684.77000</td><td>88684.77000</td><td>89383.74000</td>
+  <td>0.16</td><td>$207</td>
+  <td class="positive">$+191.11</td>
+  <td class="positive">+0.92R</td>
+  <td>$52,540.97</td>
+  <td>SL</td>
+  <td>68</td>
+</tr><tr class="trade-loss">
+  <td>27</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2025-12-30 19:25</td><td>2025-12-30 20:50</td>
+  <td>88161.86000</td><td>87800.89350</td><td>89316.76000</td>
+  <td>0.57</td><td>$206</td>
+  <td class="negative">$-205.75</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,335.22</td>
+  <td>SL</td>
+  <td>17</td>
+</tr><tr class="trade-loss">
+  <td>28</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>SELL</td>
+  <td>2025-12-31 16:40</td><td>2025-12-31 20:55</td>
+  <td>1.17366</td><td>1.17509</td><td>1.17080</td>
+  <td>1.38</td><td>$197</td>
+  <td class="negative">$-197.34</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,137.88</td>
+  <td>SL</td>
+  <td>51</td>
+</tr><tr class="trade-win">
+  <td>29</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>SELL</td>
+  <td>2026-01-08 15:50</td><td>2026-01-08 16:20</td>
+  <td>1.16661</td><td>1.16661</td><td>1.16559</td>
+  <td>0.27</td><td>$196</td>
+  <td class="positive">$+115.67</td>
+  <td class="positive">+0.59R</td>
+  <td>$52,253.55</td>
+  <td>TP</td>
+  <td>6</td>
+</tr><tr class="trade-win">
+  <td>30</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>SELL</td>
+  <td>2026-01-14 20:50</td><td>2026-01-15 13:30</td>
+  <td>1.34325</td><td>1.34325</td><td>1.33886</td>
+  <td>0.18</td><td>$202</td>
+  <td class="positive">$+339.26</td>
+  <td class="positive">+1.68R</td>
+  <td>$52,592.81</td>
+  <td>TP</td>
+  <td>200</td>
+</tr><tr class="trade-win">
+  <td>31</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>SELL</td>
+  <td>2026-01-14 20:50</td><td>2026-01-15 13:30</td>
+  <td>1.16435</td><td>1.16435</td><td>1.16086</td>
+  <td>0.23</td><td>$197</td>
+  <td class="positive">$+646.77</td>
+  <td class="positive">+3.28R</td>
+  <td>$53,239.58</td>
+  <td>TP</td>
+  <td>200</td>
+</tr><tr class="trade-win">
+  <td>32</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-01-20 01:40</td><td>2026-01-20 02:20</td>
+  <td>92631.44000</td><td>92631.44000</td><td>92344.02000</td>
+  <td>0.17</td><td>$206</td>
+  <td class="positive">$+146.71</td>
+  <td class="positive">+0.71R</td>
+  <td>$53,386.29</td>
+  <td>TP</td>
+  <td>8</td>
+</tr><tr class="trade-loss">
+  <td>33</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-01-21 13:25</td><td>2026-01-21 14:05</td>
+  <td>88720.21000</td><td>88979.77700</td><td>88047.24000</td>
+  <td>0.80</td><td>$208</td>
+  <td class="negative">$-207.65</td>
+  <td class="negative">-1.00R</td>
+  <td>$53,178.64</td>
+  <td>SL</td>
+  <td>8</td>
+</tr><tr class="trade-loss">
+  <td>34</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>SELL</td>
+  <td>2026-01-21 13:25</td><td>2026-01-21 14:40</td>
+  <td>1.34141</td><td>1.34518</td><td>1.33387</td>
+  <td>0.54</td><td>$204</td>
+  <td class="negative">$-203.58</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,975.06</td>
+  <td>SL</td>
+  <td>15</td>
+</tr><tr class="trade-win">
+  <td>35</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>BUY</td>
+  <td>2026-01-21 20:00</td><td>2026-01-22 12:20</td>
+  <td>1.16919</td><td>1.16919</td><td>1.17000</td>
+  <td>0.12</td><td>$198</td>
+  <td class="positive">$+123.10</td>
+  <td class="positive">+0.62R</td>
+  <td>$53,098.16</td>
+  <td>TP</td>
+  <td>196</td>
+</tr><tr class="trade-win">
+  <td>36</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-01-26 15:30</td><td>2026-01-26 15:40</td>
+  <td>88418.85000</td><td>88418.85000</td><td>87351.69000</td>
+  <td>0.08</td><td>$204</td>
+  <td class="positive">$+677.84</td>
+  <td class="positive">+3.32R</td>
+  <td>$53,776.00</td>
+  <td>TP</td>
+  <td>2</td>
+</tr><tr class="trade-loss">
+  <td>37</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-01-27 14:40</td><td>2026-01-27 16:05</td>
+  <td>87720.92000</td><td>88434.37650</td><td>86294.00700</td>
+  <td>0.29</td><td>$207</td>
+  <td class="negative">$-206.90</td>
+  <td class="negative">-1.00R</td>
+  <td>$53,569.10</td>
+  <td>SL</td>
+  <td>17</td>
+</tr><tr class="trade-win">
+  <td>38</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-01-28 04:40</td><td>2026-01-28 09:55</td>
+  <td>88961.86000</td><td>88961.86000</td><td>89424.95000</td>
+  <td>0.14</td><td>$208</td>
+  <td class="positive">$+247.40</td>
+  <td class="positive">+1.19R</td>
+  <td>$53,816.50</td>
+  <td>TP</td>
+  <td>63</td>
+</tr><tr class="trade-loss">
+  <td>39</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-01-30 07:30</td><td>2026-01-30 11:50</td>
+  <td>82531.23000</td><td>83082.87900</td><td>81014.34000</td>
+  <td>0.38</td><td>$210</td>
+  <td class="negative">$-209.63</td>
+  <td class="negative">-1.00R</td>
+  <td>$53,606.87</td>
+  <td>SL</td>
+  <td>52</td>
+</tr><tr class="trade-loss">
+  <td>40</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-01-30 12:15</td><td>2026-01-30 14:35</td>
+  <td>82803.90000</td><td>83310.01450</td><td>82008.67000</td>
+  <td>0.41</td><td>$208</td>
+  <td class="negative">$-207.51</td>
+  <td class="negative">-1.00R</td>
+  <td>$53,399.36</td>
+  <td>SL</td>
+  <td>28</td>
+</tr><tr class="trade-win">
+  <td>41</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-01-30 15:00</td><td>2026-01-30 15:35</td>
+  <td>82982.96000</td><td>82982.96000</td><td>82008.67000</td>
+  <td>0.05</td><td>$202</td>
+  <td class="positive">$+106.04</td>
+  <td class="positive">+0.53R</td>
+  <td>$53,505.40</td>
+  <td>SL</td>
+  <td>7</td>
+</tr><tr class="trade-loss">
+  <td>42</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-02-04 01:00</td><td>2026-02-04 01:00</td>
+  <td>75818.82000</td><td>76276.85400</td><td>75307.56000</td>
+  <td>0.45</td><td>$206</td>
+  <td class="negative">$-206.12</td>
+  <td class="negative">-1.00R</td>
+  <td>$53,299.28</td>
+  <td>SL</td>
+  <td>0</td>
+</tr><tr class="trade-loss">
+  <td>43</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-02-06 13:35</td><td>2026-02-06 13:50</td>
+  <td>66932.75000</td><td>67589.56900</td><td>66554.89000</td>
+  <td>0.31</td><td>$204</td>
+  <td class="negative">$-203.61</td>
+  <td class="negative">-1.00R</td>
+  <td>$53,095.67</td>
+  <td>SL</td>
+  <td>3</td>
+</tr><tr class="trade-loss">
+  <td>44</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-02-16 18:45</td><td>2026-02-16 20:40</td>
+  <td>67958.91000</td><td>68263.96900</td><td>67544.17000</td>
+  <td>0.67</td><td>$204</td>
+  <td class="negative">$-204.39</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,891.28</td>
+  <td>SL</td>
+  <td>23</td>
+</tr><tr class="trade-loss">
+  <td>45</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>BUY</td>
+  <td>2026-02-11 18:40</td><td>2026-02-17 07:50</td>
+  <td>1.18855</td><td>1.18307</td><td>1.19952</td>
+  <td>0.36</td><td>$197</td>
+  <td class="negative">$-197.28</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,694.00</td>
+  <td>SL</td>
+  <td>1021</td>
+</tr><tr class="trade-win">
+  <td>46</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>SELL</td>
+  <td>2026-02-13 15:25</td><td>2026-02-17 13:15</td>
+  <td>1.36294</td><td>1.36294</td><td>1.35393</td>
+  <td>0.09</td><td>$203</td>
+  <td class="positive">$+340.58</td>
+  <td class="positive">+1.68R</td>
+  <td>$53,034.58</td>
+  <td>TP</td>
+  <td>547</td>
+</tr><tr class="trade-loss">
+  <td>47</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-02-17 16:50</td><td>2026-02-18 08:15</td>
+  <td>67552.08000</td><td>68277.02050</td><td>66102.19900</td>
+  <td>0.28</td><td>$203</td>
+  <td class="negative">$-202.98</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,831.60</td>
+  <td>SL</td>
+  <td>185</td>
+</tr><tr class="trade-win">
+  <td>48</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-02-18 15:55</td><td>2026-02-18 18:40</td>
+  <td>67826.31000</td><td>67826.31000</td><td>66564.71000</td>
+  <td>0.06</td><td>$201</td>
+  <td class="positive">$+338.10</td>
+  <td class="positive">+1.68R</td>
+  <td>$53,169.70</td>
+  <td>TP</td>
+  <td>33</td>
+</tr><tr class="trade-win">
+  <td>49</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>SELL</td>
+  <td>2026-02-18 13:30</td><td>2026-02-19 11:30</td>
+  <td>1.35662</td><td>1.35662</td><td>1.34703</td>
+  <td>0.08</td><td>$201</td>
+  <td class="positive">$+338.34</td>
+  <td class="positive">+1.68R</td>
+  <td>$53,508.04</td>
+  <td>TP</td>
+  <td>264</td>
+</tr><tr class="trade-win">
+  <td>50</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-02-20 13:55</td><td>2026-02-20 15:10</td>
+  <td>66936.02000</td><td>66936.02000</td><td>68299.60000</td>
+  <td>0.06</td><td>$203</td>
+  <td class="positive">$+259.49</td>
+  <td class="positive">+1.28R</td>
+  <td>$53,767.53</td>
+  <td>SL</td>
+  <td>15</td>
+</tr><tr class="trade-loss">
+  <td>51</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>SELL</td>
+  <td>2026-02-20 13:40</td><td>2026-02-20 15:15</td>
+  <td>1.34710</td><td>1.35066</td><td>1.33998</td>
+  <td>0.58</td><td>$206</td>
+  <td class="negative">$-206.48</td>
+  <td class="negative">-1.00R</td>
+  <td>$53,561.05</td>
+  <td>SL</td>
+  <td>19</td>
+</tr><tr class="trade-win">
+  <td>52</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-02-25 05:20</td><td>2026-02-25 05:20</td>
+  <td>65305.16000</td><td>65305.16000</td><td>65112.32000</td>
+  <td>0.16</td><td>$206</td>
+  <td class="positive">$+82.14</td>
+  <td class="positive">+0.40R</td>
+  <td>$53,643.19</td>
+  <td>SL</td>
+  <td>0</td>
+</tr><tr class="trade-loss">
+  <td>53</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-02-25 05:30</td><td>2026-02-25 08:45</td>
+  <td>65189.03000</td><td>65502.94600</td><td>64561.19800</td>
+  <td>0.66</td><td>$207</td>
+  <td class="negative">$-207.18</td>
+  <td class="negative">-1.00R</td>
+  <td>$53,436.01</td>
+  <td>SL</td>
+  <td>39</td>
+</tr><tr class="trade-loss">
+  <td>54</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>SELL</td>
+  <td>2026-02-25 15:30</td><td>2026-02-25 17:00</td>
+  <td>1.17912</td><td>1.18080</td><td>1.17577</td>
+  <td>1.19</td><td>$199</td>
+  <td class="negative">$-199.92</td>
+  <td class="negative">-1.00R</td>
+  <td>$53,236.09</td>
+  <td>SL</td>
+  <td>18</td>
+</tr><tr class="trade-loss">
+  <td>55</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>BUY</td>
+  <td>2026-02-26 15:45</td><td>2026-03-01 22:05</td>
+  <td>1.17932</td><td>1.17689</td><td>1.18417</td>
+  <td>0.82</td><td>$199</td>
+  <td class="negative">$-199.26</td>
+  <td class="negative">-1.00R</td>
+  <td>$53,036.83</td>
+  <td>SL</td>
+  <td>363</td>
+</tr><tr class="trade-loss">
+  <td>56</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-03-02 02:40</td><td>2026-03-02 07:05</td>
+  <td>66417.02000</td><td>65765.70600</td><td>67719.64800</td>
+  <td>0.31</td><td>$202</td>
+  <td class="negative">$-201.91</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,834.92</td>
+  <td>SL</td>
+  <td>53</td>
+</tr><tr class="trade-loss">
+  <td>57</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-03-05 13:50</td><td>2026-03-05 14:40</td>
+  <td>72642.07000</td><td>72086.11800</td><td>73753.97400</td>
+  <td>0.37</td><td>$206</td>
+  <td class="negative">$-205.70</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,629.22</td>
+  <td>SL</td>
+  <td>10</td>
+</tr><tr class="trade-loss">
+  <td>58</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>SELL</td>
+  <td>2026-03-06 14:00</td><td>2026-03-06 15:15</td>
+  <td>1.33384</td><td>1.33806</td><td>1.32540</td>
+  <td>0.48</td><td>$203</td>
+  <td class="negative">$-202.56</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,426.66</td>
+  <td>SL</td>
+  <td>15</td>
+</tr><tr class="trade-loss">
+  <td>59</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>SELL</td>
+  <td>2026-03-06 13:55</td><td>2026-03-06 16:35</td>
+  <td>1.15598</td><td>1.16088</td><td>1.14618</td>
+  <td>0.40</td><td>$196</td>
+  <td class="negative">$-196.00</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,230.66</td>
+  <td>SL</td>
+  <td>32</td>
+</tr><tr class="trade-win">
+  <td>60</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-03-09 18:00</td><td>2026-03-09 19:30</td>
+  <td>68614.12000</td><td>68614.12000</td><td>69503.38000</td>
+  <td>0.09</td><td>$204</td>
+  <td class="positive">$+260.10</td>
+  <td class="positive">+1.28R</td>
+  <td>$52,490.76</td>
+  <td>TP</td>
+  <td>18</td>
+</tr><tr class="trade-loss">
+  <td>61</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-03-12 09:45</td><td>2026-03-12 14:40</td>
+  <td>70268.90000</td><td>69497.61350</td><td>71811.47300</td>
+  <td>0.26</td><td>$201</td>
+  <td class="negative">$-200.53</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,290.23</td>
+  <td>SL</td>
+  <td>59</td>
+</tr><tr class="trade-win">
+  <td>62</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-03-16 15:00</td><td>2026-03-17 00:05</td>
+  <td>73579.43000</td><td>73579.43000</td><td>75096.51600</td>
+  <td>0.05</td><td>$205</td>
+  <td class="positive">$+344.07</td>
+  <td class="positive">+1.68R</td>
+  <td>$52,634.30</td>
+  <td>TP</td>
+  <td>109</td>
+</tr><tr class="trade-win">
+  <td>63</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>SELL</td>
+  <td>2026-03-18 16:40</td><td>2026-03-18 20:35</td>
+  <td>1.33274</td><td>1.33274</td><td>1.32537</td>
+  <td>0.11</td><td>$203</td>
+  <td class="positive">$+340.49</td>
+  <td class="positive">+1.68R</td>
+  <td>$52,974.79</td>
+  <td>TP</td>
+  <td>47</td>
+</tr><tr class="trade-win">
+  <td>64</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>SELL</td>
+  <td>2026-03-18 16:00</td><td>2026-03-19 13:50</td>
+  <td>1.15127</td><td>1.15127</td><td>1.14414</td>
+  <td>0.11</td><td>$196</td>
+  <td class="positive">$+250.98</td>
+  <td class="positive">+1.28R</td>
+  <td>$53,225.77</td>
+  <td>SL</td>
+  <td>262</td>
+</tr><tr class="trade-loss">
+  <td>65</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-03-19 14:20</td><td>2026-03-19 19:10</td>
+  <td>69424.67000</td><td>70319.14500</td><td>67635.72000</td>
+  <td>0.23</td><td>$206</td>
+  <td class="negative">$-205.73</td>
+  <td class="negative">-1.00R</td>
+  <td>$53,020.04</td>
+  <td>SL</td>
+  <td>58</td>
+</tr><tr class="trade-loss">
+  <td>66</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-03-23 15:05</td><td>2026-03-23 15:20</td>
+  <td>71544.47000</td><td>70985.94600</td><td>72661.51800</td>
+  <td>0.36</td><td>$201</td>
+  <td class="negative">$-201.07</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,818.97</td>
+  <td>SL</td>
+  <td>3</td>
+</tr><tr class="trade-loss">
+  <td>67</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-03-24 19:35</td><td>2026-03-24 20:20</td>
+  <td>69382.21000</td><td>69721.68200</td><td>68882.52000</td>
+  <td>0.60</td><td>$204</td>
+  <td class="negative">$-203.68</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,615.29</td>
+  <td>SL</td>
+  <td>9</td>
+</tr><tr class="trade-loss">
+  <td>68</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-03-27 05:30</td><td>2026-03-27 07:10</td>
+  <td>68555.49000</td><td>68864.68500</td><td>67937.10000</td>
+  <td>0.66</td><td>$204</td>
+  <td class="negative">$-204.07</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,411.22</td>
+  <td>SL</td>
+  <td>20</td>
+</tr><tr class="trade-loss">
+  <td>69</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>SELL</td>
+  <td>2026-03-27 14:00</td><td>2026-03-27 15:20</td>
+  <td>1.15238</td><td>1.15437</td><td>1.14840</td>
+  <td>0.99</td><td>$197</td>
+  <td class="negative">$-197.01</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,214.21</td>
+  <td>SL</td>
+  <td>16</td>
+</tr><tr class="trade-win">
+  <td>70</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>SELL</td>
+  <td>2026-03-26 20:30</td><td>2026-03-29 22:00</td>
+  <td>1.33331</td><td>1.33331</td><td>1.32578</td>
+  <td>0.11</td><td>$203</td>
+  <td class="positive">$+341.56</td>
+  <td class="positive">+1.68R</td>
+  <td>$52,555.77</td>
+  <td>TP</td>
+  <td>305</td>
+</tr><tr class="trade-win">
+  <td>71</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-03-31 01:50</td><td>2026-03-31 07:15</td>
+  <td>67848.22000</td><td>67848.22000</td><td>67164.18000</td>
+  <td>0.06</td><td>$201</td>
+  <td class="positive">$+151.29</td>
+  <td class="positive">+0.75R</td>
+  <td>$52,707.06</td>
+  <td>TP</td>
+  <td>65</td>
+</tr><tr class="trade-win">
+  <td>72</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-01 03:10</td><td>2026-04-01 06:40</td>
+  <td>68017.63000</td><td>68017.63000</td><td>69182.05300</td>
+  <td>0.07</td><td>$204</td>
+  <td class="positive">$+342.34</td>
+  <td class="positive">+1.68R</td>
+  <td>$53,049.40</td>
+  <td>TP</td>
+  <td>42</td>
+</tr><tr class="trade-loss">
+  <td>73</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>SELL</td>
+  <td>2026-04-03 20:45</td><td>2026-04-06 07:40</td>
+  <td>1.15154</td><td>1.15478</td><td>1.14506</td>
+  <td>0.61</td><td>$198</td>
+  <td class="negative">$-197.64</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,851.76</td>
+  <td>SL</td>
+  <td>130</td>
+</tr><tr class="trade-loss">
+  <td>74</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-08 18:40</td><td>2026-04-08 18:50</td>
+  <td>71490.97000</td><td>71224.53300</td><td>71722.23000</td>
+  <td>0.77</td><td>$205</td>
+  <td class="negative">$-205.16</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,646.60</td>
+  <td>SL</td>
+  <td>2</td>
+</tr><tr class="trade-win">
+  <td>75</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-10 08:15</td><td>2026-04-10 08:35</td>
+  <td>71619.05000</td><td>71619.05000</td><td>71903.14000</td>
+  <td>0.16</td><td>$205</td>
+  <td class="positive">$+70.44</td>
+  <td class="positive">+0.34R</td>
+  <td>$52,717.04</td>
+  <td>SL</td>
+  <td>4</td>
+</tr><tr class="trade-win">
+  <td>76</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-10 09:10</td><td>2026-04-10 12:20</td>
+  <td>71675.34000</td><td>71675.34000</td><td>72286.65000</td>
+  <td>0.18</td><td>$205</td>
+  <td class="positive">$+371.90</td>
+  <td class="positive">+1.82R</td>
+  <td>$53,088.94</td>
+  <td>TP</td>
+  <td>38</td>
+</tr><tr class="trade-win">
+  <td>77</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-10 13:55</td><td>2026-04-10 15:20</td>
+  <td>72291.87000</td><td>72291.87000</td><td>73208.79300</td>
+  <td>0.09</td><td>$206</td>
+  <td class="positive">$+346.59</td>
+  <td class="positive">+1.68R</td>
+  <td>$53,435.53</td>
+  <td>TP</td>
+  <td>17</td>
+</tr><tr class="trade-loss">
+  <td>78</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-09 19:15</td><td>2026-04-12 21:05</td>
+  <td>1.34399</td><td>1.33937</td><td>1.35324</td>
+  <td>0.44</td><td>$203</td>
+  <td class="negative">$-203.28</td>
+  <td class="negative">-1.00R</td>
+  <td>$53,232.25</td>
+  <td>SL</td>
+  <td>308</td>
+</tr><tr class="trade-loss">
+  <td>79</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-14 00:45</td><td>2026-04-14 00:55</td>
+  <td>74459.46000</td><td>74123.94400</td><td>74933.55000</td>
+  <td>0.62</td><td>$208</td>
+  <td class="negative">$-208.02</td>
+  <td class="negative">-1.00R</td>
+  <td>$53,024.23</td>
+  <td>SL</td>
+  <td>2</td>
+</tr><tr class="trade-win">
+  <td>80</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-14 01:15</td><td>2026-04-14 07:05</td>
+  <td>74337.54000</td><td>74337.54000</td><td>74933.55000</td>
+  <td>0.10</td><td>$205</td>
+  <td class="positive">$+488.73</td>
+  <td class="positive">+2.39R</td>
+  <td>$53,512.96</td>
+  <td>TP</td>
+  <td>70</td>
+</tr><tr class="trade-loss">
+  <td>81</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-14 17:25</td><td>2026-04-14 17:30</td>
+  <td>74893.84000</td><td>74453.41300</td><td>75774.69400</td>
+  <td>0.47</td><td>$207</td>
+  <td class="negative">$-207.00</td>
+  <td class="negative">-1.00R</td>
+  <td>$53,305.96</td>
+  <td>SL</td>
+  <td>1</td>
+</tr><tr class="trade-loss">
+  <td>82</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-14 17:50</td><td>2026-04-14 18:45</td>
+  <td>74712.17000</td><td>74193.33300</td><td>75749.84400</td>
+  <td>0.40</td><td>$208</td>
+  <td class="negative">$-207.53</td>
+  <td class="negative">-1.00R</td>
+  <td>$53,098.43</td>
+  <td>SL</td>
+  <td>11</td>
+</tr><tr class="trade-loss">
+  <td>83</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-14 19:10</td><td>2026-04-15 07:15</td>
+  <td>74415.04000</td><td>73771.29600</td><td>75702.52800</td>
+  <td>0.32</td><td>$206</td>
+  <td class="negative">$-206.00</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,892.43</td>
+  <td>SL</td>
+  <td>145</td>
+</tr><tr class="trade-loss">
+  <td>84</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-15 08:30</td><td>2026-04-15 15:30</td>
+  <td>74033.37000</td><td>73685.45400</td><td>74729.20200</td>
+  <td>0.59</td><td>$205</td>
+  <td class="negative">$-205.27</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,687.16</td>
+  <td>SL</td>
+  <td>84</td>
+</tr><tr class="trade-win">
+  <td>85</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-15 15:50</td><td>2026-04-15 19:30</td>
+  <td>73939.94000</td><td>73939.94000</td><td>74933.55000</td>
+  <td>0.09</td><td>$204</td>
+  <td class="positive">$+352.85</td>
+  <td class="positive">+1.73R</td>
+  <td>$53,040.01</td>
+  <td>TP</td>
+  <td>44</td>
+</tr><tr class="trade-loss">
+  <td>86</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-16 23:10</td><td>2026-04-17 01:20</td>
+  <td>75007.99000</td><td>74792.53100</td><td>75438.90800</td>
+  <td>0.96</td><td>$207</td>
+  <td class="negative">$-206.84</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,833.17</td>
+  <td>SL</td>
+  <td>26</td>
+</tr><tr class="trade-win">
+  <td>87</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-17 02:05</td><td>2026-04-17 08:45</td>
+  <td>74821.04000</td><td>74821.04000</td><td>75466.44000</td>
+  <td>0.14</td><td>$204</td>
+  <td class="positive">$+349.28</td>
+  <td class="positive">+1.71R</td>
+  <td>$53,182.45</td>
+  <td>TP</td>
+  <td>80</td>
+</tr><tr class="trade-loss">
+  <td>88</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-04-20 07:40</td><td>2026-04-20 14:25</td>
+  <td>74969.21000</td><td>75713.84050</td><td>73479.94900</td>
+  <td>0.27</td><td>$201</td>
+  <td class="negative">$-201.05</td>
+  <td class="negative">-1.00R</td>
+  <td>$52,981.40</td>
+  <td>SL</td>
+  <td>81</td>
+</tr><tr class="trade-win">
+  <td>89</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-20 23:45</td><td>2026-04-21 01:05</td>
+  <td>75816.81000</td><td>75816.81000</td><td>76278.85000</td>
+  <td>0.19</td><td>$207</td>
+  <td class="positive">$+694.94</td>
+  <td class="positive">+3.35R</td>
+  <td>$53,676.34</td>
+  <td>TP</td>
+  <td>16</td>
+</tr><tr class="trade-win">
+  <td>90</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-23 18:00</td><td>2026-04-27 05:30</td>
+  <td>77799.79000</td><td>77799.79000</td><td>79771.54500</td>
+  <td>0.04</td><td>$207</td>
+  <td class="positive">$+265.00</td>
+  <td class="positive">+1.28R</td>
+  <td>$53,941.34</td>
+  <td>SL</td>
+  <td>1002</td>
+</tr><tr class="trade-win">
+  <td>91</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-04-27 15:00</td><td>2026-04-27 15:20</td>
+  <td>77832.49000</td><td>77832.49000</td><td>76788.85700</td>
+  <td>0.08</td><td>$209</td>
+  <td class="positive">$+350.66</td>
+  <td class="positive">+1.68R</td>
+  <td>$54,292.00</td>
+  <td>TP</td>
+  <td>4</td>
+</tr><tr class="trade-win">
+  <td>92</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-27 15:40</td><td>2026-04-28 01:45</td>
+  <td>77045.98000</td><td>77045.98000</td><td>77609.61000</td>
+  <td>0.06</td><td>$207</td>
+  <td class="positive">$+75.06</td>
+  <td class="positive">+0.36R</td>
+  <td>$54,367.06</td>
+  <td>SL</td>
+  <td>121</td>
+</tr><tr class="trade-win">
+  <td>93</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-04-28 02:35</td><td>2026-04-28 02:35</td>
+  <td>76954.76000</td><td>76954.76000</td><td>76639.02000</td>
+  <td>0.13</td><td>$211</td>
+  <td class="positive">$+84.29</td>
+  <td class="positive">+0.40R</td>
+  <td>$54,451.35</td>
+  <td>SL</td>
+  <td>0</td>
+</tr><tr class="trade-win">
+  <td>94</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-04-28 06:25</td><td>2026-04-28 07:15</td>
+  <td>76846.17000</td><td>76846.17000</td><td>76406.51700</td>
+  <td>0.19</td><td>$213</td>
+  <td class="positive">$+699.40</td>
+  <td class="positive">+3.28R</td>
+  <td>$55,150.75</td>
+  <td>TP</td>
+  <td>10</td>
+</tr><tr class="trade-loss">
+  <td>95</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-29 12:50</td><td>2026-04-29 13:20</td>
+  <td>77132.57000</td><td>76903.21650</td><td>77591.27700</td>
+  <td>0.94</td><td>$216</td>
+  <td class="negative">$-215.59</td>
+  <td class="negative">-1.00R</td>
+  <td>$54,935.16</td>
+  <td>SL</td>
+  <td>6</td>
+</tr><tr class="trade-win">
+  <td>96</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>BUY</td>
+  <td>2026-04-08 19:40</td><td>2026-04-29 18:40</td>
+  <td>1.16639</td><td>1.16639</td><td>1.18510</td>
+  <td>0.04</td><td>$196</td>
+  <td class="positive">$+251.46</td>
+  <td class="positive">+1.28R</td>
+  <td>$55,186.62</td>
+  <td>SL</td>
+  <td>4303</td>
+</tr><tr class="trade-win">
+  <td>97</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-04-30 04:10</td><td>2026-04-30 06:30</td>
+  <td>75769.92000</td><td>75769.92000</td><td>74880.74000</td>
+  <td>0.18</td><td>$215</td>
+  <td class="positive">$+275.35</td>
+  <td class="positive">+1.28R</td>
+  <td>$55,461.97</td>
+  <td>SL</td>
+  <td>28</td>
+</tr><tr class="trade-loss">
+  <td>98</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-04-30 06:50</td><td>2026-04-30 07:30</td>
+  <td>75728.42000</td><td>75886.30950</td><td>75412.64100</td>
+  <td>1.36</td><td>$215</td>
+  <td class="negative">$-214.73</td>
+  <td class="negative">-1.00R</td>
+  <td>$55,247.24</td>
+  <td>SL</td>
+  <td>8</td>
+</tr><tr class="trade-win">
+  <td>99</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-05-01 10:25</td><td>2026-05-01 12:30</td>
+  <td>77388.35000</td><td>77388.35000</td><td>77963.58100</td>
+  <td>0.15</td><td>$213</td>
+  <td class="positive">$+698.10</td>
+  <td class="positive">+3.28R</td>
+  <td>$55,945.34</td>
+  <td>TP</td>
+  <td>25</td>
+</tr><tr class="trade-win">
+  <td>100</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-05-04 10:40</td><td>2026-05-04 17:50</td>
+  <td>78930.13000</td><td>78930.13000</td><td>80786.60600</td>
+  <td>0.05</td><td>$213</td>
+  <td class="positive">$+358.67</td>
+  <td class="positive">+1.68R</td>
+  <td>$56,304.01</td>
+  <td>TP</td>
+  <td>86</td>
+</tr><tr class="trade-win">
+  <td>101</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-05-05 00:00</td><td>2026-05-05 00:30</td>
+  <td>79860.33000</td><td>79860.33000</td><td>80394.60000</td>
+  <td>0.26</td><td>$219</td>
+  <td class="positive">$+280.64</td>
+  <td class="positive">+1.28R</td>
+  <td>$56,584.65</td>
+  <td>SL</td>
+  <td>6</td>
+</tr><tr class="trade-loss">
+  <td>102</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>BUY</td>
+  <td>2026-05-07 16:30</td><td>2026-05-07 17:30</td>
+  <td>1.17636</td><td>1.17445</td><td>1.18017</td>
+  <td>1.04</td><td>$198</td>
+  <td class="negative">$-198.64</td>
+  <td class="negative">-1.00R</td>
+  <td>$56,386.01</td>
+  <td>SL</td>
+  <td>12</td>
+</tr><tr class="trade-loss">
+  <td>103</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-05-11 11:25</td><td>2026-05-11 13:35</td>
+  <td>81122.82000</td><td>80837.22050</td><td>81475.17000</td>
+  <td>0.77</td><td>$220</td>
+  <td class="negative">$-219.91</td>
+  <td class="negative">-1.00R</td>
+  <td>$56,166.10</td>
+  <td>SL</td>
+  <td>26</td>
+</tr><tr class="trade-loss">
+  <td>104</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-05-12 01:55</td><td>2026-05-12 10:50</td>
+  <td>81183.45000</td><td>80578.88800</td><td>82392.57400</td>
+  <td>0.36</td><td>$218</td>
+  <td class="negative">$-217.64</td>
+  <td class="negative">-1.00R</td>
+  <td>$55,948.46</td>
+  <td>SL</td>
+  <td>107</td>
+</tr><tr class="trade-win">
+  <td>105</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>BUY</td>
+  <td>2026-05-22 14:40</td><td>2026-05-25 11:35</td>
+  <td>1.34263</td><td>1.34263</td><td>1.35000</td>
+  <td>0.24</td><td>$206</td>
+  <td class="positive">$+442.96</td>
+  <td class="positive">+2.15R</td>
+  <td>$56,391.42</td>
+  <td>TP</td>
+  <td>250</td>
+</tr><tr class="trade-loss">
+  <td>106</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>BUY</td>
+  <td>2026-05-27 17:50</td><td>2026-05-28 03:30</td>
+  <td>1.16266</td><td>1.15979</td><td>1.16841</td>
+  <td>0.68</td><td>$195</td>
+  <td class="negative">$-195.16</td>
+  <td class="negative">-1.00R</td>
+  <td>$56,196.26</td>
+  <td>SL</td>
+  <td>116</td>
+</tr><tr class="trade-win">
+  <td>107</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>SELL</td>
+  <td>2026-05-29 14:00</td><td>2026-05-29 14:00</td>
+  <td>1.34389</td><td>1.34389</td><td>1.34000</td>
+  <td>1.70</td><td>$209</td>
+  <td class="positive">$+70.80</td>
+  <td class="positive">+0.34R</td>
+  <td>$56,267.06</td>
+  <td>SL</td>
+  <td>0</td>
+</tr><tr class="trade-win">
+  <td>108</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-05-29 15:50</td><td>2026-05-29 18:50</td>
+  <td>73774.30000</td><td>73774.30000</td><td>73269.20000</td>
+  <td>0.09</td><td>$215</td>
+  <td class="positive">$+352.55</td>
+  <td class="positive">+1.64R</td>
+  <td>$56,619.61</td>
+  <td>TP</td>
+  <td>36</td>
+</tr><tr class="trade-win">
+  <td>109</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-06-02 04:55</td><td>2026-06-02 06:45</td>
+  <td>70786.15000</td><td>70786.15000</td><td>69976.73000</td>
+  <td>0.19</td><td>$219</td>
+  <td class="positive">$+437.21</td>
+  <td class="positive">+2.00R</td>
+  <td>$57,056.82</td>
+  <td>TP</td>
+  <td>22</td>
+</tr><tr class="trade-win">
+  <td>110</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-06-04 04:40</td><td>2026-06-05 06:20</td>
+  <td>64318.02000</td><td>64318.02000</td><td>61309.83000</td>
+  <td>0.09</td><td>$222</td>
+  <td class="positive">$+1,137.10</td>
+  <td class="positive">+5.12R</td>
+  <td>$58,193.92</td>
+  <td>TP</td>
+  <td>308</td>
+</tr><tr class="trade-loss">
+  <td>111</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-06-18 01:00</td><td>2026-06-18 01:00</td>
+  <td>64399.73000</td><td>64607.35550</td><td>63990.61000</td>
+  <td>1.09</td><td>$226</td>
+  <td class="negative">$-226.31</td>
+  <td class="negative">-1.00R</td>
+  <td>$57,967.61</td>
+  <td>SL</td>
+  <td>0</td>
+</tr><tr class="trade-win">
+  <td>112</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-06-18 01:45</td><td>2026-06-18 04:10</td>
+  <td>64559.73000</td><td>64559.73000</td><td>63990.61000</td>
+  <td>0.18</td><td>$225</td>
+  <td class="positive">$+393.09</td>
+  <td class="positive">+1.74R</td>
+  <td>$58,360.70</td>
+  <td>TP</td>
+  <td>29</td>
+</tr><tr class="trade-win">
+  <td>113</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-06-22 03:25</td><td>2026-06-22 13:45</td>
+  <td>64303.22000</td><td>64303.22000</td><td>65455.74000</td>
+  <td>0.08</td><td>$225</td>
+  <td class="positive">$+377.57</td>
+  <td class="positive">+1.68R</td>
+  <td>$58,738.27</td>
+  <td>TP</td>
+  <td>124</td>
+</tr><tr class="trade-loss">
+  <td>114</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-06-23 14:30</td><td>2026-06-24 00:35</td>
+  <td>62507.39000</td><td>62901.53700</td><td>61719.09600</td>
+  <td>0.58</td><td>$229</td>
+  <td class="negative">$-228.61</td>
+  <td class="negative">-1.00R</td>
+  <td>$58,509.66</td>
+  <td>SL</td>
+  <td>121</td>
+</tr><tr class="trade-win">
+  <td>115</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-06-30 01:45</td><td>2026-06-30 08:35</td>
+  <td>59748.15000</td><td>59748.15000</td><td>59175.63000</td>
+  <td>0.17</td><td>$228</td>
+  <td class="positive">$+386.82</td>
+  <td class="positive">+1.70R</td>
+  <td>$58,896.48</td>
+  <td>TP</td>
+  <td>82</td>
+</tr><tr class="trade-win">
+  <td>116</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-07-01 10:10</td><td>2026-07-01 12:05</td>
+  <td>58788.11000</td><td>58788.11000</td><td>58442.35000</td>
+  <td>0.31</td><td>$229</td>
+  <td class="positive">$+399.32</td>
+  <td class="positive">+1.74R</td>
+  <td>$59,295.80</td>
+  <td>TP</td>
+  <td>23</td>
+</tr><tr class="trade-loss">
+  <td>117</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-07-01 14:35</td><td>2026-07-01 15:20</td>
+  <td>59595.80000</td><td>60174.35350</td><td>58438.69300</td>
+  <td>0.39</td><td>$226</td>
+  <td class="negative">$-225.64</td>
+  <td class="negative">-1.00R</td>
+  <td>$59,070.16</td>
+  <td>SL</td>
+  <td>9</td>
+</tr><tr class="trade-win">
+  <td>118</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-07-02 16:50</td><td>2026-07-04 17:30</td>
+  <td>61711.57000</td><td>61711.57000</td><td>63153.90000</td>
+  <td>0.06</td><td>$224</td>
+  <td class="positive">$+375.58</td>
+  <td class="positive">+1.68R</td>
+  <td>$59,445.74</td>
+  <td>TP</td>
+  <td>584</td>
+</tr><tr class="trade-loss">
+  <td>119</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-07-06 07:45</td><td>2026-07-06 08:35</td>
+  <td>63043.73000</td><td>62818.47850</td><td>63494.23300</td>
+  <td>1.02</td><td>$230</td>
+  <td class="negative">$-229.76</td>
+  <td class="negative">-1.00R</td>
+  <td>$59,215.98</td>
+  <td>SL</td>
+  <td>10</td>
+</tr><tr class="trade-loss">
+  <td>120</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-07-07 00:25</td><td>2026-07-07 01:00</td>
+  <td>64188.42000</td><td>63912.16950</td><td>64671.13000</td>
+  <td>0.83</td><td>$229</td>
+  <td class="negative">$-229.29</td>
+  <td class="negative">-1.00R</td>
+  <td>$58,986.69</td>
+  <td>SL</td>
+  <td>7</td>
+</tr><tr class="trade-loss">
+  <td>121</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-07-07 19:40</td><td>2026-07-07 22:00</td>
+  <td>63750.43000</td><td>63255.06000</td><td>64741.17000</td>
+  <td>0.46</td><td>$228</td>
+  <td class="negative">$-227.87</td>
+  <td class="negative">-1.00R</td>
+  <td>$58,758.82</td>
+  <td>SL</td>
+  <td>28</td>
+</tr><tr class="trade-win">
+  <td>122</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-07-08 12:40</td><td>2026-07-08 14:20</td>
+  <td>62101.32000</td><td>62101.32000</td><td>61253.48000</td>
+  <td>0.14</td><td>$228</td>
+  <td class="positive">$+292.16</td>
+  <td class="positive">+1.28R</td>
+  <td>$59,050.98</td>
+  <td>SL</td>
+  <td>20</td>
+</tr><tr class="trade-win">
+  <td>123</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-07-08 17:50</td><td>2026-07-08 17:50</td>
+  <td>62182.33000</td><td>62182.33000</td><td>61672.32000</td>
+  <td>0.20</td><td>$230</td>
+  <td class="positive">$+125.58</td>
+  <td class="positive">+0.55R</td>
+  <td>$59,176.56</td>
+  <td>SL</td>
+  <td>0</td>
+</tr><tr class="trade-win">
+  <td>124</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-07-08 18:30</td><td>2026-07-08 18:45</td>
+  <td>62132.01000</td><td>62132.01000</td><td>61672.32000</td>
+  <td>0.20</td><td>$230</td>
+  <td class="positive">$+92.73</td>
+  <td class="positive">+0.40R</td>
+  <td>$59,269.29</td>
+  <td>SL</td>
+  <td>3</td>
+</tr><tr class="trade-win">
+  <td>125</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-07-08 19:55</td><td>2026-07-08 21:10</td>
+  <td>62137.52000</td><td>62137.52000</td><td>61980.13000</td>
+  <td>0.32</td><td>$230</td>
+  <td class="positive">$+200.21</td>
+  <td class="positive">+0.87R</td>
+  <td>$59,469.50</td>
+  <td>TP</td>
+  <td>15</td>
+</tr><tr class="trade-win">
+  <td>126</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-07-08 23:25</td><td>2026-07-09 01:05</td>
+  <td>62178.45000</td><td>62178.45000</td><td>61980.13000</td>
+  <td>0.30</td><td>$231</td>
+  <td class="positive">$+178.54</td>
+  <td class="positive">+0.77R</td>
+  <td>$59,648.04</td>
+  <td>SL</td>
+  <td>20</td>
+</tr><tr class="trade-loss">
+  <td>127</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-07-09 01:40</td><td>2026-07-09 06:00</td>
+  <td>62214.44000</td><td>62684.74300</td><td>61273.83400</td>
+  <td>0.49</td><td>$230</td>
+  <td class="negative">$-230.45</td>
+  <td class="negative">-1.00R</td>
+  <td>$59,417.59</td>
+  <td>SL</td>
+  <td>52</td>
+</tr><tr class="trade-win">
+  <td>128</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-07-09 12:00</td><td>2026-07-09 12:35</td>
+  <td>62728.94000</td><td>62728.94000</td><td>62999.84000</td>
+  <td>0.21</td><td>$230</td>
+  <td class="positive">$+114.40</td>
+  <td class="positive">+0.50R</td>
+  <td>$59,531.99</td>
+  <td>SL</td>
+  <td>7</td>
+</tr><tr class="trade-win">
+  <td>129</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-07-13 00:40</td><td>2026-07-13 13:40</td>
+  <td>63726.50000</td><td>63726.50000</td><td>62200.94200</td>
+  <td>0.06</td><td>$229</td>
+  <td class="positive">$+384.44</td>
+  <td class="positive">+1.68R</td>
+  <td>$59,916.43</td>
+  <td>TP</td>
+  <td>156</td>
+</tr><tr class="trade-win">
+  <td>130</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>BUY</td>
+  <td>2026-07-05 21:05</td><td>2026-07-13 19:10</td>
+  <td>1.33540</td><td>1.33540</td><td>1.34697</td>
+  <td>0.07</td><td>$208</td>
+  <td class="positive">$+266.57</td>
+  <td class="positive">+1.28R</td>
+  <td>$60,183.00</td>
+  <td>SL</td>
+  <td>1700</td>
+</tr><tr class="trade-loss">
+  <td>131</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-07-15 19:35</td><td>2026-07-15 23:45</td>
+  <td>64842.75000</td><td>64650.10400</td><td>65228.04200</td>
+  <td>1.21</td><td>$233</td>
+  <td class="negative">$-233.10</td>
+  <td class="negative">-1.00R</td>
+  <td>$59,949.90</td>
+  <td>SL</td>
+  <td>50</td>
+</tr><tr class="trade-loss">
+  <td>132</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-07-20 10:40</td><td>2026-07-20 11:05</td>
+  <td>64222.99000</td><td>64392.72100</td><td>64027.95000</td>
+  <td>1.37</td><td>$233</td>
+  <td class="negative">$-232.53</td>
+  <td class="negative">-1.00R</td>
+  <td>$59,717.37</td>
+  <td>SL</td>
+  <td>5</td>
+</tr><tr class="trade-loss">
+  <td>133</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-07-24 05:40</td><td>2026-07-24 06:15</td>
+  <td>65216.99000</td><td>65370.60800</td><td>64960.31000</td>
+  <td>1.50</td><td>$230</td>
+  <td class="negative">$-230.43</td>
+  <td class="negative">-1.00R</td>
+  <td>$59,486.94</td>
+  <td>SL</td>
+  <td>7</td>
+</tr><tr class="trade-loss">
+  <td>134</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-07-27 01:10</td><td>2026-07-27 01:15</td>
+  <td>65136.29000</td><td>64959.31200</td><td>65524.87000</td>
+  <td>1.30</td><td>$230</td>
+  <td class="negative">$-230.07</td>
+  <td class="negative">-1.00R</td>
+  <td>$59,256.87</td>
+  <td>SL</td>
+  <td>1</td>
+</tr><tr class="trade-win">
+  <td>135</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-07-27 01:55</td><td>2026-07-27 06:05</td>
+  <td>65107.99000</td><td>65107.99000</td><td>65524.87000</td>
+  <td>0.14</td><td>$227</td>
+  <td class="positive">$+248.63</td>
+  <td class="positive">+1.09R</td>
+  <td>$59,505.50</td>
+  <td>TP</td>
+  <td>50</td>
+</tr><tr class="trade-win">
+  <td>136</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-07-28 17:10</td><td>2026-07-28 19:05</td>
+  <td>63787.09000</td><td>63787.09000</td><td>63324.32000</td>
+  <td>0.15</td><td>$229</td>
+  <td class="positive">$+118.87</td>
+  <td class="positive">+0.52R</td>
+  <td>$59,624.37</td>
+  <td>SL</td>
+  <td>23</td>
+</tr><tr class="trade-win">
+  <td>137</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-07-29 01:05</td><td>2026-07-29 02:25</td>
+  <td>63908.41000</td><td>63908.41000</td><td>63539.44000</td>
+  <td>0.17</td><td>$229</td>
+  <td class="positive">$+169.54</td>
+  <td class="positive">+0.74R</td>
+  <td>$59,793.91</td>
+  <td>SL</td>
+  <td>16</td>
+</tr><tr class="trade-win">
+  <td>138</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-07-29 02:55</td><td>2026-07-29 04:00</td>
+  <td>63893.87000</td><td>63893.87000</td><td>63565.20000</td>
+  <td>0.21</td><td>$231</td>
+  <td class="positive">$+276.34</td>
+  <td class="positive">+1.20R</td>
+  <td>$60,070.25</td>
+  <td>TP</td>
+  <td>13</td>
+</tr><tr class="trade-loss">
+  <td>139</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-07-29 13:25</td><td>2026-07-29 13:30</td>
+  <td>64133.46000</td><td>64301.15950</td><td>63589.24000</td>
+  <td>1.39</td><td>$233</td>
+  <td class="negative">$-233.10</td>
+  <td class="negative">-1.00R</td>
+  <td>$59,837.15</td>
+  <td>SL</td>
+  <td>1</td>
+</tr><tr class="trade-win">
+  <td>140</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-07-29 18:25</td><td>2026-07-29 19:45</td>
+  <td>64029.75000</td><td>64029.75000</td><td>63565.20000</td>
+  <td>0.07</td><td>$227</td>
+  <td class="positive">$+246.34</td>
+  <td class="positive">+1.09R</td>
+  <td>$60,083.49</td>
+  <td>TP</td>
+  <td>16</td>
+</tr><tr class="trade-win">
+  <td>141</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-07-30 02:40</td><td>2026-07-30 03:15</td>
+  <td>64170.02000</td><td>64170.02000</td><td>63802.90000</td>
+  <td>0.22</td><td>$232</td>
+  <td class="positive">$+80.20</td>
+  <td class="positive">+0.35R</td>
+  <td>$60,163.69</td>
+  <td>SL</td>
+  <td>7</td>
+</tr><tr class="trade-loss">
+  <td>142</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-08-04 07:35</td><td>2026-08-04 10:15</td>
+  <td>63628.77000</td><td>63404.12800</td><td>64078.05400</td>
+  <td>1.03</td><td>$231</td>
+  <td class="negative">$-231.38</td>
+  <td class="negative">-1.00R</td>
+  <td>$59,932.31</td>
+  <td>SL</td>
+  <td>32</td>
+</tr><tr class="trade-loss">
+  <td>143</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-08-06 10:25</td><td>2026-08-06 11:00</td>
+  <td>64616.08000</td><td>64487.96350</td><td>64872.31300</td>
+  <td>1.81</td><td>$232</td>
+  <td class="negative">$-231.89</td>
+  <td class="negative">-1.00R</td>
+  <td>$59,700.42</td>
+  <td>SL</td>
+  <td>7</td>
+</tr><tr class="trade-loss">
+  <td>144</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-08-10 08:10</td><td>2026-08-10 09:25</td>
+  <td>65226.53000</td><td>65109.56300</td><td>65460.46400</td>
+  <td>1.98</td><td>$232</td>
+  <td class="negative">$-231.59</td>
+  <td class="negative">-1.00R</td>
+  <td>$59,468.83</td>
+  <td>SL</td>
+  <td>15</td>
+</tr><tr class="trade-win">
+  <td>145</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>BUY</td>
+  <td>2026-07-31 14:20</td><td>2026-08-10 14:05</td>
+  <td>1.34149</td><td>1.34149</td><td>1.35110</td>
+  <td>0.09</td><td>$207</td>
+  <td class="positive">$+347.12</td>
+  <td class="positive">+1.68R</td>
+  <td>$59,815.95</td>
+  <td>TP</td>
+  <td>1719</td>
+</tr><tr class="trade-win">
+  <td>146</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-08-11 12:25</td><td>2026-08-11 14:25</td>
+  <td>64248.52000</td><td>64248.52000</td><td>63887.51000</td>
+  <td>0.22</td><td>$230</td>
+  <td class="positive">$+325.36</td>
+  <td class="positive">+1.41R</td>
+  <td>$60,141.31</td>
+  <td>TP</td>
+  <td>24</td>
+</tr><tr class="trade-loss">
+  <td>147</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-08-13 10:10</td><td>2026-08-13 14:15</td>
+  <td>63572.96000</td><td>63790.80250</td><td>63137.27500</td>
+  <td>1.06</td><td>$231</td>
+  <td class="negative">$-230.91</td>
+  <td class="negative">-1.00R</td>
+  <td>$59,910.40</td>
+  <td>SL</td>
+  <td>49</td>
+</tr><tr class="trade-loss">
+  <td>148</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>SELL</td>
+  <td>2026-08-12 16:25</td><td>2026-08-14 11:30</td>
+  <td>1.15323</td><td>1.15644</td><td>1.14682</td>
+  <td>0.61</td><td>$196</td>
+  <td class="negative">$-195.81</td>
+  <td class="negative">-1.00R</td>
+  <td>$59,714.59</td>
+  <td>SL</td>
+  <td>516</td>
+</tr><tr class="trade-loss">
+  <td>149</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-08-14 16:55</td><td>2026-08-14 17:20</td>
+  <td>63046.10000</td><td>63188.63550</td><td>62761.02900</td>
+  <td>1.62</td><td>$231</td>
+  <td class="negative">$-230.91</td>
+  <td class="negative">-1.00R</td>
+  <td>$59,483.68</td>
+  <td>SL</td>
+  <td>5</td>
+</tr><tr class="trade-win">
+  <td>150</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-08-14 17:45</td><td>2026-08-15 02:20</td>
+  <td>63043.23000</td><td>63043.23000</td><td>62666.42000</td>
+  <td>0.27</td><td>$230</td>
+  <td class="positive">$+294.31</td>
+  <td class="positive">+1.28R</td>
+  <td>$59,777.99</td>
+  <td>SL</td>
+  <td>103</td>
+</tr><tr class="trade-loss">
+  <td>151</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-08-19 00:40</td><td>2026-08-19 00:50</td>
+  <td>64601.61000</td><td>64472.23350</td><td>64787.90000</td>
+  <td>1.78</td><td>$230</td>
+  <td class="negative">$-230.29</td>
+  <td class="negative">-1.00R</td>
+  <td>$59,547.70</td>
+  <td>SL</td>
+  <td>2</td>
+</tr><tr class="trade-win">
+  <td>152</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>BUY</td>
+  <td>2026-08-13 16:55</td><td>2026-08-19 12:35</td>
+  <td>1.34873</td><td>1.34873</td><td>1.35800</td>
+  <td>0.09</td><td>$209</td>
+  <td class="positive">$+350.41</td>
+  <td class="positive">+1.68R</td>
+  <td>$59,898.11</td>
+  <td>TP</td>
+  <td>1097</td>
+</tr><tr class="trade-loss">
+  <td>153</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-08-20 00:05</td><td>2026-08-20 03:05</td>
+  <td>69503.87000</td><td>69044.69250</td><td>70056.32000</td>
+  <td>0.50</td><td>$230</td>
+  <td class="negative">$-229.59</td>
+  <td class="negative">-1.00R</td>
+  <td>$59,668.52</td>
+  <td>SL</td>
+  <td>36</td>
+</tr><tr class="trade-win">
+  <td>154</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-08-20 03:40</td><td>2026-08-20 06:45</td>
+  <td>69020.41000</td><td>69020.41000</td><td>69853.00000</td>
+  <td>0.18</td><td>$229</td>
+  <td class="positive">$+588.81</td>
+  <td class="positive">+2.57R</td>
+  <td>$60,257.33</td>
+  <td>TP</td>
+  <td>37</td>
+</tr><tr class="trade-loss">
+  <td>155</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-08-20 06:55</td><td>2026-08-20 07:30</td>
+  <td>69801.77000</td><td>69519.96250</td><td>70365.38500</td>
+  <td>0.82</td><td>$231</td>
+  <td class="negative">$-231.08</td>
+  <td class="negative">-1.00R</td>
+  <td>$60,026.25</td>
+  <td>SL</td>
+  <td>7</td>
+</tr><tr class="trade-win">
+  <td>156</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-08-20 08:00</td><td>2026-08-20 08:05</td>
+  <td>69780.88000</td><td>69780.88000</td><td>70584.15500</td>
+  <td>0.11</td><td>$229</td>
+  <td class="positive">$+750.90</td>
+  <td class="positive">+3.28R</td>
+  <td>$60,777.15</td>
+  <td>TP</td>
+  <td>1</td>
+</tr><tr class="trade-win">
+  <td>157</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-08-21 07:05</td><td>2026-08-21 07:15</td>
+  <td>75689.54000</td><td>75689.54000</td><td>76858.21500</td>
+  <td>0.08</td><td>$234</td>
+  <td class="positive">$+766.65</td>
+  <td class="positive">+3.28R</td>
+  <td>$61,543.80</td>
+  <td>TP</td>
+  <td>2</td>
+</tr><tr class="trade-loss">
+  <td>158</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-08-26 19:35</td><td>2026-08-26 20:20</td>
+  <td>78487.17000</td><td>78222.29400</td><td>79016.92200</td>
+  <td>0.89</td><td>$236</td>
+  <td class="negative">$-235.74</td>
+  <td class="negative">-1.00R</td>
+  <td>$61,308.06</td>
+  <td>SL</td>
+  <td>9</td>
+</tr><tr class="trade-loss">
+  <td>159</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>SELL</td>
+  <td>2026-08-27 13:50</td><td>2026-08-27 13:50</td>
+  <td>1.35934</td><td>1.35945</td><td>1.35897</td>
+  <td>18.85</td><td>$213</td>
+  <td class="negative">$-207.35</td>
+  <td class="negative">-0.97R</td>
+  <td>$61,100.71</td>
+  <td>SL</td>
+  <td>0</td>
+</tr><tr class="trade-win">
+  <td>160</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>SELL</td>
+  <td>2026-08-27 19:35</td><td>2026-08-28 14:00</td>
+  <td>1.35872</td><td>1.35872</td><td>1.35552</td>
+  <td>0.26</td><td>$211</td>
+  <td class="positive">$+270.34</td>
+  <td class="positive">+1.28R</td>
+  <td>$61,371.05</td>
+  <td>SL</td>
+  <td>220</td>
+</tr><tr class="trade-loss">
+  <td>161</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-08-31 10:45</td><td>2026-08-31 12:20</td>
+  <td>78507.46000</td><td>78226.40900</td><td>78798.48000</td>
+  <td>0.84</td><td>$236</td>
+  <td class="negative">$-236.08</td>
+  <td class="negative">-1.00R</td>
+  <td>$61,134.97</td>
+  <td>SL</td>
+  <td>19</td>
+</tr><tr class="trade-win">
+  <td>162</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-09-01 10:55</td><td>2026-09-01 13:05</td>
+  <td>77982.07000</td><td>77982.07000</td><td>77442.40000</td>
+  <td>0.18</td><td>$233</td>
+  <td class="positive">$+789.88</td>
+  <td class="positive">+3.38R</td>
+  <td>$61,924.85</td>
+  <td>TP</td>
+  <td>26</td>
+</tr><tr class="trade-win">
+  <td>163</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-09-01 15:00</td><td>2026-09-01 15:00</td>
+  <td>78141.05000</td><td>78141.05000</td><td>77836.00000</td>
+  <td>0.14</td><td>$236</td>
+  <td class="positive">$+81.68</td>
+  <td class="positive">+0.35R</td>
+  <td>$62,006.53</td>
+  <td>SL</td>
+  <td>0</td>
+</tr><tr class="trade-win">
+  <td>164</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-09-01 17:50</td><td>2026-09-01 18:25</td>
+  <td>77411.82000</td><td>77411.82000</td><td>76709.12400</td>
+  <td>0.13</td><td>$235</td>
+  <td class="positive">$+772.13</td>
+  <td class="positive">+3.28R</td>
+  <td>$62,778.66</td>
+  <td>TP</td>
+  <td>7</td>
+</tr><tr class="trade-win">
+  <td>165</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-09-02 00:00</td><td>2026-09-02 01:40</td>
+  <td>77417.12000</td><td>77417.12000</td><td>76869.85000</td>
+  <td>0.21</td><td>$241</td>
+  <td class="positive">$+421.51</td>
+  <td class="positive">+1.75R</td>
+  <td>$63,200.17</td>
+  <td>TP</td>
+  <td>20</td>
+</tr><tr class="trade-loss">
+  <td>166</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-09-02 05:10</td><td>2026-09-02 05:15</td>
+  <td>77433.09000</td><td>77611.76250</td><td>77075.74500</td>
+  <td>1.36</td><td>$243</td>
+  <td class="negative">$-242.99</td>
+  <td class="negative">-1.00R</td>
+  <td>$62,957.18</td>
+  <td>SL</td>
+  <td>1</td>
+</tr><tr class="trade-loss">
+  <td>167</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-09-02 06:35</td><td>2026-09-02 07:10</td>
+  <td>77478.84000</td><td>77725.46650</td><td>76985.58700</td>
+  <td>0.98</td><td>$242</td>
+  <td class="negative">$-241.69</td>
+  <td class="negative">-1.00R</td>
+  <td>$62,715.49</td>
+  <td>SL</td>
+  <td>7</td>
+</tr><tr class="trade-win">
+  <td>168</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-09-03 03:10</td><td>2026-09-03 05:20</td>
+  <td>77685.92000</td><td>77685.92000</td><td>77389.49000</td>
+  <td>0.18</td><td>$241</td>
+  <td class="positive">$+218.51</td>
+  <td class="positive">+0.91R</td>
+  <td>$62,934.00</td>
+  <td>TP</td>
+  <td>26</td>
+</tr><tr class="trade-loss">
+  <td>169</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>SELL</td>
+  <td>2026-09-03 15:45</td><td>2026-09-04 07:30</td>
+  <td>1.35322</td><td>1.35494</td><td>1.35115</td>
+  <td>1.23</td><td>$212</td>
+  <td class="negative">$-211.56</td>
+  <td class="negative">-1.00R</td>
+  <td>$62,722.44</td>
+  <td>SL</td>
+  <td>189</td>
+</tr><tr class="trade-loss">
+  <td>170</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>BUY</td>
+  <td>2026-09-03 19:50</td><td>2026-09-04 12:30</td>
+  <td>1.16289</td><td>1.16071</td><td>1.16726</td>
+  <td>0.89</td><td>$194</td>
+  <td class="negative">$-194.02</td>
+  <td class="negative">-1.00R</td>
+  <td>$62,528.42</td>
+  <td>SL</td>
+  <td>199</td>
+</tr><tr class="trade-loss">
+  <td>171</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>BUY</td>
+  <td>2026-09-09 15:45</td><td>2026-09-10 11:55</td>
+  <td>1.16317</td><td>1.16190</td><td>1.16571</td>
+  <td>1.53</td><td>$195</td>
+  <td class="negative">$-194.31</td>
+  <td class="negative">-1.00R</td>
+  <td>$62,334.11</td>
+  <td>SL</td>
+  <td>241</td>
+</tr><tr class="trade-win">
+  <td>172</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-09-11 01:20</td><td>2026-09-11 01:20</td>
+  <td>76881.07000</td><td>76881.07000</td><td>76630.78000</td>
+  <td>0.33</td><td>$241</td>
+  <td class="positive">$+133.43</td>
+  <td class="positive">+0.55R</td>
+  <td>$62,467.54</td>
+  <td>SL</td>
+  <td>0</td>
+</tr><tr class="trade-loss">
+  <td>173</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>BUY</td>
+  <td>2026-09-10 16:30</td><td>2026-09-11 10:30</td>
+  <td>1.16260</td><td>1.15904</td><td>1.16973</td>
+  <td>0.54</td><td>$192</td>
+  <td class="negative">$-192.24</td>
+  <td class="negative">-1.00R</td>
+  <td>$62,275.30</td>
+  <td>SL</td>
+  <td>215</td>
+</tr><tr class="trade-win">
+  <td>174</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-09-11 17:45</td><td>2026-09-11 18:00</td>
+  <td>77583.46000</td><td>77583.46000</td><td>77217.47000</td>
+  <td>0.12</td><td>$240</td>
+  <td class="positive">$+345.76</td>
+  <td class="positive">+1.44R</td>
+  <td>$62,621.06</td>
+  <td>TP</td>
+  <td>3</td>
+</tr><tr class="trade-loss">
+  <td>175</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-09-14 02:45</td><td>2026-09-14 03:05</td>
+  <td>77453.10000</td><td>77724.68400</td><td>77313.47000</td>
+  <td>0.89</td><td>$242</td>
+  <td class="negative">$-241.71</td>
+  <td class="negative">-1.00R</td>
+  <td>$62,379.35</td>
+  <td>SL</td>
+  <td>4</td>
+</tr><tr class="trade-win">
+  <td>176</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>SELL</td>
+  <td>2026-09-17 13:15</td><td>2026-09-23 16:50</td>
+  <td>1.14868</td><td>1.14868</td><td>1.13789</td>
+  <td>0.07</td><td>$189</td>
+  <td class="positive">$+317.23</td>
+  <td class="positive">+1.68R</td>
+  <td>$62,696.58</td>
+  <td>TP</td>
+  <td>1193</td>
+</tr><tr class="trade-loss">
+  <td>177</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-09-28 16:45</td><td>2026-09-28 17:15</td>
+  <td>83726.06000</td><td>84276.89300</td><td>83182.62000</td>
+  <td>0.44</td><td>$242</td>
+  <td class="negative">$-242.37</td>
+  <td class="negative">-1.00R</td>
+  <td>$62,454.21</td>
+  <td>SL</td>
+  <td>6</td>
+</tr><tr class="trade-win">
+  <td>178</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-09-28 23:55</td><td>2026-09-29 01:00</td>
+  <td>83524.58000</td><td>83524.58000</td><td>83072.26000</td>
+  <td>0.50</td><td>$242</td>
+  <td class="positive">$+779.48</td>
+  <td class="positive">+3.23R</td>
+  <td>$63,233.69</td>
+  <td>TP</td>
+  <td>13</td>
+</tr><tr class="trade-loss">
+  <td>179</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-09-29 04:40</td><td>2026-09-29 05:15</td>
+  <td>83120.24000</td><td>83312.37900</td><td>82735.96200</td>
+  <td>1.27</td><td>$244</td>
+  <td class="negative">$-244.02</td>
+  <td class="negative">-1.00R</td>
+  <td>$62,989.67</td>
+  <td>SL</td>
+  <td>7</td>
+</tr><tr class="trade-loss">
+  <td>180</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-09-29 05:40</td><td>2026-09-29 05:50</td>
+  <td>83085.00000</td><td>83375.64250</td><td>82503.71500</td>
+  <td>0.84</td><td>$244</td>
+  <td class="negative">$-244.14</td>
+  <td class="negative">-1.00R</td>
+  <td>$62,745.53</td>
+  <td>SL</td>
+  <td>2</td>
+</tr><tr class="trade-win">
+  <td>181</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-10-01 10:00</td><td>2026-10-01 10:00</td>
+  <td>83732.80000</td><td>83732.80000</td><td>83368.46000</td>
+  <td>0.28</td><td>$243</td>
+  <td class="positive">$+311.30</td>
+  <td class="positive">+1.28R</td>
+  <td>$63,056.83</td>
+  <td>SL</td>
+  <td>0</td>
+</tr><tr class="trade-loss">
+  <td>182</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-10-01 10:10</td><td>2026-10-01 10:45</td>
+  <td>83622.42000</td><td>83926.97050</td><td>83013.31900</td>
+  <td>0.80</td><td>$244</td>
+  <td class="negative">$-243.64</td>
+  <td class="negative">-1.00R</td>
+  <td>$62,813.19</td>
+  <td>SL</td>
+  <td>7</td>
+</tr><tr class="trade-win">
+  <td>183</td>
+  <td><span class="sym-badge sym-EURUSD">EURUSD</span></td>
+  <td>SELL</td>
+  <td>2026-10-02 14:55</td><td>2026-10-05 02:45</td>
+  <td>1.12717</td><td>1.12717</td><td>1.11857</td>
+  <td>0.09</td><td>$193</td>
+  <td class="positive">$+634.68</td>
+  <td class="positive">+3.28R</td>
+  <td>$63,447.87</td>
+  <td>TP</td>
+  <td>141</td>
+</tr><tr class="trade-loss">
+  <td>184</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-10-06 02:30</td><td>2026-10-06 03:30</td>
+  <td>85622.41000</td><td>85363.33250</td><td>85794.55000</td>
+  <td>0.94</td><td>$244</td>
+  <td class="negative">$-243.53</td>
+  <td class="negative">-1.00R</td>
+  <td>$63,204.34</td>
+  <td>SL</td>
+  <td>12</td>
+</tr><tr class="trade-win">
+  <td>185</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>SELL</td>
+  <td>2026-10-07 10:40</td><td>2026-10-07 11:20</td>
+  <td>83706.29000</td><td>83706.29000</td><td>83391.46000</td>
+  <td>0.17</td><td>$243</td>
+  <td class="positive">$+94.14</td>
+  <td class="positive">+0.39R</td>
+  <td>$63,298.48</td>
+  <td>SL</td>
+  <td>8</td>
+</tr><tr class="trade-win">
+  <td>186</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-10-12 02:05</td><td>2026-10-12 06:55</td>
+  <td>83603.56000</td><td>83603.56000</td><td>84219.90600</td>
+  <td>0.16</td><td>$240</td>
+  <td class="positive">$+403.83</td>
+  <td class="positive">+1.68R</td>
+  <td>$63,702.31</td>
+  <td>TP</td>
+  <td>58</td>
+</tr><tr class="trade-loss">
+  <td>187</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-10-12 08:35</td><td>2026-10-12 09:20</td>
+  <td>83663.70000</td><td>83382.04950</td><td>84227.00100</td>
+  <td>0.86</td><td>$242</td>
+  <td class="negative">$-242.22</td>
+  <td class="negative">-1.00R</td>
+  <td>$63,460.09</td>
+  <td>SL</td>
+  <td>9</td>
+</tr><tr class="trade-loss">
+  <td>188</td>
+  <td><span class="sym-badge sym-BTCUSD">BTCUSD</span></td>
+  <td>BUY</td>
+  <td>2026-10-12 10:00</td><td>2026-10-12 12:20</td>
+  <td>83459.40000</td><td>83163.59150</td><td>83643.92000</td>
+  <td>0.82</td><td>$243</td>
+  <td class="negative">$-242.56</td>
+  <td class="negative">-1.00R</td>
+  <td>$63,217.53</td>
+  <td>SL</td>
+  <td>28</td>
+</tr><tr class="trade-win">
+  <td>189</td>
+  <td><span class="sym-badge sym-GBPUSD">GBPUSD</span></td>
+  <td>BUY</td>
+  <td>2026-10-15 19:40</td><td>2026-10-16 10:10</td>
+  <td>1.32724</td><td>1.32724</td><td>1.33409</td>
+  <td>0.12</td><td>$212</td>
+  <td class="positive">$+356.75</td>
+  <td class="positive">+1.68R</td>
+  <td>$63,574.28</td>
+  <td>TP</td>
+  <td>174</td>
+</tr></table>
+
+<p style="color:#8b949e; margin-top:40px; font-size:12px">
+Generated 2026-10-19 10:34 UTC |
+Start balance: $50,000 |
+Period: 12 months |
+Strategy: Unified Trading Plan (HTF POI + DOL + Macro Time + 5m FVG + Swing SL)
+</p>
+</body></html>
