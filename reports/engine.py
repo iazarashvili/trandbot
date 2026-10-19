@@ -124,16 +124,27 @@ _HTF_CACHE = {}
 def run(m5, h1, m15_liq, contract, point, rrr=3.0, invert=False,
         one_shot_per_zone=False, no_poi=False, no_trend=False,
         stop_mode=None, buffer_atr=0.5, use_liq_tp=True,
-        breakeven_r=0.0, use_partial=True, progress=False):
+        breakeven_r=0.0, use_partial=True, progress=False,
+        sym_cfg=None, start_balance=None):
     """Replays the strategy bar by bar and returns {summary, trades, equity}.
 
     breakeven_r: move stop to entry once price reaches this many R in profit.
                  0.0 disables the feature.
     use_partial: at 80% of TP, close 80% of position, move SL to entry,
                  move TP to next liquidity level.
+    sym_cfg: per-symbol overrides (night_start, night_end, blocked_days, risk_percent, etc.)
     """
     if stop_mode is None:
-        stop_mode = STOP_MODE
+        stop_mode = (sym_cfg or {}).get("stop_mode", STOP_MODE)
+
+    # Per-symbol config overrides
+    _night_start = (sym_cfg or {}).get("night_start", NIGHT_START_HOUR)
+    _night_end = (sym_cfg or {}).get("night_end", NIGHT_END_HOUR)
+    _blocked_days = (sym_cfg or {}).get("blocked_days", BLOCKED_DAYS)
+    _skip_weekends = (sym_cfg or {}).get("skip_weekends", SKIP_WEEKENDS)
+    _risk_pct = (sym_cfg or {}).get("risk_percent", RISK_PERCENT)
+    _max_risk_usd = (sym_cfg or {}).get("max_risk_usd", MAX_RISK_USD)
+    _max_risk_pct = (sym_cfg or {}).get("max_risk_pct", MAX_RISK_PCT)
     from strategy import ZonePOI
     any_zones = (ZonePOI(type="BULLISH", top=1e12, bottom=-1e12),
                  ZonePOI(type="BEARISH", top=1e12, bottom=-1e12))
@@ -157,7 +168,7 @@ def run(m5, h1, m15_liq, contract, point, rrr=3.0, invert=False,
         start += 1
 
     trades, equity = [], []
-    balance = START_BALANCE
+    balance = start_balance if start_balance is not None else START_BALANCE
     poi, poi_h, trend = None, -1, "NEUTRAL"
     watch_key, watch_start, abandoned = None, None, False
     dead_zones = set()
@@ -267,7 +278,7 @@ def run(m5, h1, m15_liq, contract, point, rrr=3.0, invert=False,
                         balance += pnl
                         total_pnl = pnl + p.get("partial_pnl", 0)
                         p.update(
-                            exit_time=str(times.iloc[t]), exit_price=round(exit_px, 2),
+                            exit_time=str(times.iloc[t]), exit_price=round(exit_px, 5),
                             exit_reason="TIME_STOP",
                             bars_held=t - p.pop("entry_bar"),
                             pnl=round(total_pnl, 2),
@@ -294,7 +305,7 @@ def run(m5, h1, m15_liq, contract, point, rrr=3.0, invert=False,
                 balance += remaining_pnl
                 total_pnl = remaining_pnl + p.get("partial_pnl", 0)
                 p.update(
-                    exit_time=str(times.iloc[t]), exit_price=round(exit_px, 2),
+                    exit_time=str(times.iloc[t]), exit_price=round(exit_px, 5),
                     exit_reason="SL" if hit_sl else "TP",
                     bars_held=t - p.pop("entry_bar"),
                     pnl=round(total_pnl, 2),
@@ -310,14 +321,16 @@ def run(m5, h1, m15_liq, contract, point, rrr=3.0, invert=False,
                     break
             continue
 
-        # ---- weekend & night filter ----
-        if SKIP_WEEKENDS and _weekdays[t] >= 5:
+        # ---- weekend, blocked days & night filter ----
+        if _skip_weekends and _weekdays[t] >= 5:
+            continue
+        if _blocked_days and _weekdays[t] in _blocked_days:
             continue
         h = _hours[t]
-        if NIGHT_START_HOUR > NIGHT_END_HOUR:
-            if h >= NIGHT_START_HOUR or h < NIGHT_END_HOUR:
+        if _night_start > _night_end:
+            if h >= _night_start or h < _night_end:
                 continue
-        elif NIGHT_START_HOUR <= h < NIGHT_END_HOUR:
+        elif _night_start != _night_end and _night_start <= h < _night_end:
             continue
 
         # ---- ablation: no HTF zone, just the LTF trigger ----
@@ -339,7 +352,8 @@ def run(m5, h1, m15_liq, contract, point, rrr=3.0, invert=False,
             m15_slice = m15_liq.iloc[max(0, li - 200): li + 1] if use_liq_tp and li >= 0 else None
             position = _open(setup, invert, rrr, o, spread, t + 1, times,
                              trend, "ANY", zone, len(trades), contract,
-                             m15_slice=m15_slice, balance=balance)
+                             m15_slice=m15_slice, balance=balance,
+                             risk_pct=_risk_pct, max_risk_usd=_max_risk_usd, max_risk_pct=_max_risk_pct)
             continue
 
         # ---- refresh the HTF view once per closed H1 bar ----
@@ -403,16 +417,19 @@ def run(m5, h1, m15_liq, contract, point, rrr=3.0, invert=False,
 
         position = _open(setup, invert, rrr, o, spread, t + 1, times, trend,
                          poi.type, zone, len(trades), contract,
-                         m15_slice=m15_slice, balance=balance)
+                         m15_slice=m15_slice, balance=balance,
+                         risk_pct=_risk_pct, max_risk_usd=_max_risk_usd, max_risk_pct=_max_risk_pct)
 
+    _sb = start_balance if start_balance is not None else START_BALANCE
     for tr in trades:
         tr.pop("zone", None)
     return summarize(trades, equity, balance, times, start, rrr, invert,
-                     len(m5), m5, point, _time.time() - t_start)
+                     len(m5), m5, point, _time.time() - t_start, _sb)
 
 
 def _open(setup, invert, rrr, o, spread, nt, times, trend, poi_type, zone,
-          n_done, contract, m15_slice=None, balance=None):
+          n_done, contract, m15_slice=None, balance=None,
+          risk_pct=None, max_risk_usd=None, max_risk_pct=None):
     """Turns a confirmed setup into a position filled at bar `nt`'s open."""
     if invert:
         setup = SMCStrategy.invert(setup, rrr)
@@ -424,8 +441,11 @@ def _open(setup, invert, rrr, o, spread, nt, times, trend, poi_type, zone,
         return None
 
     # %-based position sizing: calculate volume from risk
+    _rp = risk_pct if risk_pct is not None else RISK_PERCENT
+    _mru = max_risk_usd if max_risk_usd is not None else MAX_RISK_USD
+    _mrp = max_risk_pct if max_risk_pct is not None else MAX_RISK_PCT
     if USE_RISK_BASED_LOT and balance is not None and balance > 0:
-        risk_amount = balance * RISK_PERCENT / 100.0
+        risk_amount = balance * _rp / 100.0
         pnl_per_lot = risk * contract
         if pnl_per_lot <= 0:
             return None
@@ -437,11 +457,11 @@ def _open(setup, invert, rrr, o, spread, nt, times, trend, poi_type, zone,
 
     # Risk cap
     risk_usd = risk * vol * contract
-    if MAX_RISK_PCT > 0 and balance is not None:
-        max_allowed = balance * MAX_RISK_PCT / 100
+    if _mrp > 0 and balance is not None:
+        max_allowed = balance * _mrp / 100
         if risk_usd > max_allowed:
             return None
-    elif MAX_RISK_USD > 0 and risk_usd > MAX_RISK_USD:
+    elif _mru > 0 and risk_usd > _mru:
         return None
 
     # Try liquidity-based TP first
@@ -465,9 +485,9 @@ def _open(setup, invert, rrr, o, spread, nt, times, trend, poi_type, zone,
     return {
         "n": n_done + 1, "dir": setup["direction"], "poi": poi_type,
         "trend": trend, "entry_time": str(times.iloc[nt]),
-        "entry": round(entry, 2), "sl": round(sl, 2), "tp": round(tp, 2),
+        "entry": round(entry, 5), "sl": round(sl, 5), "tp": round(tp, 5),
         "tp_source": tp_source,
-        "risk_px": round(risk, 2),
+        "risk_px": round(risk, 5),
         "risk_usd": round(risk * vol * contract, 2),
         "vol": vol,
         "spread_px": round(spread[nt], 2), "entry_bar": nt, "zone": zone,
@@ -475,13 +495,14 @@ def _open(setup, invert, rrr, o, spread, nt, times, trend, poi_type, zone,
 
 
 def summarize(trades, equity, balance, times, start, rrr, invert,
-              n_bars, m5, point, runtime):
+              n_bars, m5, point, runtime, start_bal=None):
     wins = [t for t in trades if t["pnl"] > 0]
     losses = [t for t in trades if t["pnl"] <= 0]
     gross_w = sum(t["pnl"] for t in wins)
     gross_l = -sum(t["pnl"] for t in losses)
 
-    peak, max_dd, max_dd_pct = START_BALANCE, 0.0, 0.0
+    _sb = start_bal or START_BALANCE
+    peak, max_dd, max_dd_pct = _sb, 0.0, 0.0
     for e in equity:
         peak = max(peak, e["balance"])
         if peak - e["balance"] > max_dd:
@@ -504,7 +525,7 @@ def summarize(trades, equity, balance, times, start, rrr, invert,
             "symbol": _active_symbol(), "rrr": rrr,
             "period_from": str(times.iloc[start]), "period_to": str(times.iloc[-1]),
             "days": round((times.iloc[-1] - times.iloc[start]).total_seconds() / 86400, 1),
-            "m5_bars": n_bars, "start_balance": START_BALANCE, "volume": VOLUME,
+            "m5_bars": n_bars, "start_balance": _sb, "volume": VOLUME,
             "spread_points": int(np.median(m5["spread"].to_numpy())),
             "end_balance": round(balance, 2),
             "net_pnl": round(balance - START_BALANCE, 2),
