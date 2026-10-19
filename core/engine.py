@@ -26,6 +26,8 @@ from mt5_connector import MT5Connector
 from risk.risk_manager import (
     calculate_lot_size, validate_entry,
 )
+from chart import BotChart
+from core.persistence import BotDatabase
 from strategy import SMCStrategy
 import telegram_bot
 
@@ -34,7 +36,18 @@ logger = logging.getLogger("smc_bot")
 RECOVERY_SLEEP = 30
 
 # All symbols the engine can trade.  Add more here.
-DEFAULT_SYMBOLS = ["BTCUSD", "GBPUSD"]
+DEFAULT_SYMBOLS = ["BTCUSD", "GBPUSD", "EURUSD"]
+
+# ICT macro time windows (UTC hours).  Only trade during these.
+# London killzone 02:00-05:00, NY AM 08:00-11:00 (Silver Bullet 10-11),
+# NY lunch macro 12:00-13:00, NY PM 13:30-16:00 (Silver Bullet 14-15).
+MACRO_WINDOWS_UTC = [
+    (2, 0, 5, 0),    # London killzone
+    (7, 0, 11, 0),   # NY AM killzone (includes London close + SB 10-11)
+    (12, 0, 13, 0),  # NY lunch macro
+    (13, 30, 16, 0),  # NY PM (includes SB 14-15)
+    (19, 0, 20, 0),  # Asian SB (for crypto)
+]
 
 
 class MultiSymbolEngine:
@@ -44,10 +57,15 @@ class MultiSymbolEngine:
         self.symbol_names = symbols or DEFAULT_SYMBOLS
         self.contexts: dict[str, SymbolContext] = {}
         self.connectors: dict[str, MT5Connector] = {}
+        self.db = BotDatabase()
+        self.chart = BotChart()
         self._running = False
         self._tg_listener = None
         self._cycle = 0
         self._last_status = 0.0
+        # Global daily trade counter (across all symbols)
+        self._global_trades_today = 0
+        self._global_trade_date = ""
 
     # ---------------------------------------------------------------- init
     def initialize(self) -> bool:
@@ -81,6 +99,16 @@ class MultiSymbolEngine:
         if not self.contexts:
             logger.error("No symbols available — cannot start.")
             return False
+
+        # Restore persisted state (consecutive losses, paused, etc.)
+        for sym, ctx in self.contexts.items():
+            saved = self.db.load_symbol_state(sym)
+            if saved:
+                ctx.state.consecutive_losses = saved["consecutive_losses"]
+                ctx.state.paused = bool(saved["paused"])
+                ctx.state.pause_reason = saved["pause_reason"] or ""
+                logger.info("Restored %s state: consec_losses=%d paused=%s",
+                            sym, ctx.state.consecutive_losses, ctx.state.paused)
 
         # Telegram
         if telegram_bot.test_connection():
@@ -184,6 +212,18 @@ class MultiSymbolEngine:
                             parts.append(f"{sym}({trend_str} {poi_str} {pos_str})")
                         logger.info("Status: %s", " | ".join(parts))
 
+                        # Generate HTF overview charts for each symbol
+                        for sym, ctx in self.contexts.items():
+                            try:
+                                df_htf = self.connectors[sym].fetch_rates(HTF, HTF_CANDLES_LOOKBACK)
+                                if df_htf is not None:
+                                    self.chart.plot_htf_only(
+                                        symbol=sym, df_htf=df_htf,
+                                        poi=ctx.state.poi, trend=ctx.state.trend,
+                                        ema_period=ctx.cfg.trend_ema_period)
+                            except Exception:
+                                pass
+
                     self._handle_tg_status()
                     time.sleep(POLL_INTERVAL)
 
@@ -196,46 +236,76 @@ class MultiSymbolEngine:
         except KeyboardInterrupt:
             logger.info("Engine stopped by user.")
         finally:
+            # Persist all symbol states before exit
+            for sym, ctx in self.contexts.items():
+                self.db.save_symbol_state(
+                    sym, ctx.state.consecutive_losses,
+                    ctx.state.paused, ctx.state.pause_reason)
+            self.db.close()
             mt5.shutdown()
-            logger.info("MT5 disconnected.")
+            logger.info("MT5 disconnected. State persisted.")
 
     # ---------------------------------------------------------------- per-symbol
     def _scan_symbol(self, ctx: SymbolContext):
-        """One full cycle for one symbol — tries all strategies."""
+        """Unified trading plan — one strategy flow per the discretionary plan.
+
+        Flow:
+          0. Manage existing / detect closed
+          1. Global 1-trade-per-day gate
+          2. is_trading_allowed (news, risk, caps, blocked days, etc.)
+          3. TIME gate — only trade during macro/killzone windows
+          4. HTF NARRATIVE — 1H trend + POI (FVG+OB pd-array)
+          5. DOL — Draw on Liquidity (nearest swing target on 15m/1H)
+          6. LTF EXECUTION — 5m FVG confirmation inside POI
+          7. SMT divergence confirmation
+          8. Risk, sizing, liquidity resistance → execute
+        """
         sym = ctx.symbol
         connector = self.connectors[sym]
         now = datetime.datetime.now(datetime.timezone.utc)
-        ctx.state.reset_daily(now.strftime("%Y-%m-%d"))
+
+        # Daily resets
+        today = now.strftime("%Y-%m-%d")
+        ctx.state.reset_daily(today)
+        ctx.state.reset_periodic(now)
+        if self._global_trade_date != today:
+            self._global_trade_date = today
+            self._global_trades_today = 0
 
         # 0. Detect closed positions — update risk state
         positions = connector.get_open_positions()
         if ctx.state.last_position_ticket is not None and not positions:
             self._on_position_closed(ctx, connector)
 
-        # 1. Manage existing positions (always, even during blocked hours)
+        # 0b. Manage existing positions (always, even during blocked hours)
         if positions:
             ctx.state.last_position_ticket = positions[0].ticket
             self._manage_positions(ctx, connector, positions)
             return  # one position at a time per symbol
 
-        # 2. Check if trading is allowed
+        # === PLAN RULE 10: Global 1 trade per day ===
+        if self._global_trades_today >= ctx.cfg.max_trades_per_day:
+            ctx.state.record_rejection("GLOBAL_MAX_DAILY_TRADES")
+            return
+
+        # === PLAN RULES 7,9,10,11,13: is_trading_allowed ===
+        # (news, blocked days, daily loss, consecutive losses, weekly/monthly cap)
         block = ctx.is_trading_allowed(now)
         if block:
             ctx.state.record_rejection(block)
             return
 
-        # 3. Fetch market data
+        # === PLAN RULE 3: TIME — only during macro/killzone windows ===
+        if not self._in_macro_window(now):
+            return  # silent — happens every 10 seconds, don't log
+
+        # === PLAN RULE 2: HTF NARRATIVE — 1H trend + POI ===
         df_htf = connector.fetch_rates(HTF, HTF_CANDLES_LOOKBACK)
         df_ltf = connector.fetch_rates(LTF, LTF_CANDLES_LOOKBACK)
         if df_htf is None or df_ltf is None:
             return
 
-        tick = connector.get_tick()
-        if tick is None:
-            return
-        current_price = (tick.bid + tick.ask) / 2
-
-        # 4. HTF trend
+        # 4a. HTF trend (EMA 100)
         trend = (
             SMCStrategy.get_htf_trend(
                 df_htf, ctx.cfg.trend_ema_period,
@@ -244,12 +314,14 @@ class MultiSymbolEngine:
         )
         ctx.state.trend = trend
 
-        # 4b. Blocked trend filter (backtest 2026-09-16: EURUSD BEARISH = -$2456)
         if trend in ctx.cfg.blocked_trends:
             ctx.state.record_rejection("BLOCKED_TREND")
             return
 
-        # 5. HTF POI
+        if trend == "NEUTRAL":
+            return  # no narrative = no trade
+
+        # 4b. HTF POI (1H FVG + OB = pd-array)
         poi = SMCStrategy.detect_htf_poi(
             df_htf=df_htf,
             use_trend_filter=ctx.cfg.use_trend_filter,
@@ -258,128 +330,94 @@ class MultiSymbolEngine:
         )
         ctx.state.poi = poi
 
-        # 6. Fetch liquidity data (shared across strategies)
+        if poi is None:
+            return  # no HTF pd-array = no narrative = no trade
+
+        # === PLAN RULE 1: DOL — Draw on Liquidity ===
         df_liq = connector.fetch_rates(LIQUIDITY_TF, LIQUIDITY_CANDLES)
+        tick = connector.get_tick()
+        if tick is None:
+            return
+        current_price = (tick.bid + tick.ask) / 2
 
-        # 7. Try all strategies — first valid signal wins
-        #    Symbols with use_sweep_filter=True skip AMD and Silver Bullet:
-        #    they are restricted to the Sweep+FVG path only.
-        setup = None
-        strategy_name = None
+        # Find the DOL target (nearest swing on 15m)
+        dol_target = None
+        if df_liq is not None:
+            dol_target = SMCStrategy.find_nearest_liquidity(
+                df_liq,
+                "BUY" if poi.type == "BULLISH" else "SELL",
+                current_price,
+                strength=SWING_STRENGTH,
+                use_closed_candles=True,
+            )
 
-        if not ctx.cfg.use_sweep_filter:
-            # --- Strategy AMD: Asian Range → Sweep → MSS → FVG ---
-            if setup is None and now.hour not in ctx.cfg.blocked_amd_hours:
-                amd_setup = self._try_amd(ctx, df_ltf, now)
-                if amd_setup:
-                    setup = amd_setup
-                    strategy_name = "AMD"
+        if dol_target is None:
+            ctx.state.record_rejection("NO_DOL")
+            return  # no draw on liquidity = no reason for price to move
 
-            # --- Strategy Silver Bullet: Time Window → DOL → MSS → FVG ---
-            if setup is None and now.hour not in ctx.cfg.blocked_sb_hours:
-                sb_setup = self._try_silver_bullet(ctx, df_ltf, df_liq, now)
-                if sb_setup:
-                    setup = sb_setup
-                    strategy_name = "SILVER_BULLET"
-
-        # --- Strategy C: POI → Sweep → FVG ---
-        if setup is None and poi is not None:
-            sweep_setup = self._try_sweep_fvg(ctx, df_ltf, poi, current_price)
-            if sweep_setup:
-                setup = sweep_setup
-                strategy_name = "SWEEP_FVG"
-
-        # P/D+FVG and baseline FVG disabled — both lose money in backtest (2026-09-01)
-
-        if setup is None:
+        # === PLAN RULE 5: LTF EXECUTION — 5m FVG inside POI ===
+        # Check zone patience (price must be in/near the POI)
+        if not self._check_zone(ctx, df_ltf, poi, current_price):
             return
 
-        # 8. Execute the winning strategy's setup
-        self._execute_setup(ctx, connector, setup, strategy_name, df_liq, now)
-
-    # ---------------------------------------------------------------- strategies
-
-    def _try_amd(self, ctx, df_ltf, now):
-        """Strategy AMD: Asian Range → Sweep → MSS → FVG."""
-        asian = SMCStrategy.get_asian_range(
-            df_ltf, use_closed_candles=USE_CLOSED_CANDLES_ONLY)
-        if asian is None:
-            return None
-
-        setup = SMCStrategy.check_amd_setup(
-            df_ltf, asian.high, asian.low,
-            swing_strength=SWING_STRENGTH,
-            rrr_fallback=ctx.cfg.rrr,
-            use_closed_candles=USE_CLOSED_CANDLES_ONLY)
-        return setup
-
-    def _try_silver_bullet(self, ctx, df_ltf, df_liq, now):
-        """Strategy Silver Bullet: strict time window + DOL + MSS + FVG."""
-        if df_liq is None:
-            return None
-
-        setup = SMCStrategy.check_silver_bullet(
-            df_ltf, df_liq,
-            current_hour_utc=now.hour,
-            current_minute=now.minute,
-            swing_strength=SWING_STRENGTH,
-            rrr_fallback=ctx.cfg.rrr,
-            use_closed_candles=USE_CLOSED_CANDLES_ONLY)
-        return setup
-
-    def _try_sweep_fvg(self, ctx, df_ltf, poi, current_price):
-        """Strategy C: POI → Sweep → FVG."""
-        if not self._check_zone(ctx, df_ltf, poi, current_price):
-            return None
-
-        # Require sweep
-        sweep = SMCStrategy.detect_liquidity_sweep(
-            df_ltf, swing_strength=SWING_STRENGTH,
-            use_closed_candles=USE_CLOSED_CANDLES_ONLY)
-        if sweep is None:
-            return None
-        if poi.type == "BULLISH" and sweep.direction != "BULLISH":
-            return None
-        if poi.type == "BEARISH" and sweep.direction != "BEARISH":
-            return None
-
-        return SMCStrategy.check_ltf_confirmation(
-            df_ltf, poi, ctx.cfg.rrr,
-            use_closed_candles=USE_CLOSED_CANDLES_ONLY,
-            stop_mode=ctx.cfg.stop_mode, buffer_atr=0.5)
-
-    def _try_pd_fvg(self, ctx, df_ltf, poi, current_price):
-        """Strategy B: POI → Premium/Discount → FVG."""
-        if not self._check_zone(ctx, df_ltf, poi, current_price):
-            return None
-
+        # 5m FVG confirmation with SL at swing high/low
         setup = SMCStrategy.check_ltf_confirmation(
             df_ltf, poi, ctx.cfg.rrr,
             use_closed_candles=USE_CLOSED_CANDLES_ONLY,
             stop_mode=ctx.cfg.stop_mode, buffer_atr=0.5)
+
         if setup is None:
-            return None
+            return
 
-        # Must be in correct P/D zone
-        pd_zone = SMCStrategy.get_premium_discount(
-            df_ltf, lookback=50, use_closed_candles=USE_CLOSED_CANDLES_ONLY)
-        if not SMCStrategy.is_premium_discount_aligned(pd_zone, setup["direction"]):
-            return None
+        # Override TP with DOL target (Plan Rule 4: 15m/1H target)
+        risk = abs(setup["entry"] - setup["sl"])
+        dol_dist = abs(dol_target - setup["entry"])
+        dol_rr = dol_dist / risk if risk > 0 else 0
+        if dol_rr >= ctx.cfg.min_rr_liquidity:
+            setup["tp"] = dol_target
+        # else keep the fixed RRR tp — DOL too close
 
-        return setup
+        # === PLAN RULE 6: SMT divergence gate ===
+        if ctx.cfg.require_smt and ctx.cfg.smt_correlated_symbol:
+            smt_block = self._check_smt(ctx, connector, df_ltf, setup)
+            if smt_block:
+                ctx.state.record_rejection(smt_block)
+                return
 
-    def _try_base_fvg(self, ctx, df_ltf, poi, current_price):
-        """Strategy A: POI → FVG (baseline)."""
-        if not self._check_zone(ctx, df_ltf, poi, current_price):
-            return None
+        # === CHART: visualize what the bot sees ===
+        try:
+            self.chart.plot_analysis(
+                symbol=sym,
+                df_htf=df_htf,
+                df_ltf=df_ltf,
+                poi=poi,
+                dol_target=dol_target,
+                setup=setup,
+                trend=trend,
+                ema_period=ctx.cfg.trend_ema_period,
+            )
+        except Exception:
+            logger.warning("[%s] Chart generation failed — continuing.", sym)
 
-        return SMCStrategy.check_ltf_confirmation(
-            df_ltf, poi, ctx.cfg.rrr,
-            use_closed_candles=USE_CLOSED_CANDLES_ONLY,
-            stop_mode=ctx.cfg.stop_mode, buffer_atr=0.5)
+        # === PLAN RULES 8,9: Execute with risk/resistance checks ===
+        self._execute_setup(ctx, connector, setup, "PLAN", df_liq, now)
+
+    # ---------------------------------------------------------------- helpers
+
+    @staticmethod
+    def _in_macro_window(now) -> bool:
+        """Check if current UTC time is inside an ICT macro/killzone window."""
+        h, m = now.hour, now.minute
+        current_mins = h * 60 + m
+        for start_h, start_m, end_h, end_m in MACRO_WINDOWS_UTC:
+            window_start = start_h * 60 + start_m
+            window_end = end_h * 60 + end_m
+            if window_start <= current_mins < window_end:
+                return True
+        return False
 
     def _check_zone(self, ctx, df_ltf, poi, current_price):
-        """Shared zone check for POI-based strategies."""
+        """Zone patience: price must be in/near the POI, with timeout."""
         if not SMCStrategy.is_zone_in_play(poi, df_ltf, current_price=current_price):
             return False
 
@@ -391,7 +429,7 @@ class MultiSymbolEngine:
             telegram_bot.notify_waiting_for_trade(
                 ctx.symbol, poi.type,
                 round(float(poi.top), 5), round(float(poi.bottom), 5),
-                ctx.state.trend, "Multi-strategy scan")
+                ctx.state.trend, "Waiting for 5m FVG")
 
         if ctx.state.abandoned:
             return False
@@ -404,28 +442,72 @@ class MultiSymbolEngine:
 
         return True
 
+    def _check_smt(self, ctx, connector, df_ltf, setup) -> Optional[str]:
+        """Check SMT divergence with correlated symbol. Returns rejection reason or None."""
+        corr_sym = ctx.cfg.smt_correlated_symbol
+        if not corr_sym:
+            return None
+
+        # Fetch correlated symbol data
+        df_corr = None
+        if corr_sym in self.connectors:
+            df_corr = self.connectors[corr_sym].fetch_rates(LTF, LTF_CANDLES_LOOKBACK)
+        else:
+            # Not in our trading list — fetch directly from MT5
+            rates = mt5.copy_rates_from_pos(corr_sym, LTF, 0, LTF_CANDLES_LOOKBACK)
+            if rates is not None and len(rates) > 0:
+                import pandas as pd
+                df_corr = pd.DataFrame(rates)
+
+        if df_corr is None:
+            logger.warning("[%s] Cannot fetch SMT data for %s — allowing trade.",
+                          ctx.symbol, corr_sym)
+            return None  # fail-open
+
+        smt = SMCStrategy.detect_smt_divergence(
+            df_ltf, df_corr,
+            swing_strength=SWING_STRENGTH,
+            use_closed_candles=USE_CLOSED_CANDLES_ONLY,
+        )
+
+        if smt is None:
+            return "NO_SMT_DIVERGENCE"
+
+        # SMT must align with trade direction
+        direction = setup["direction"]
+        if direction == "BUY" and smt != "BULLISH":
+            return f"SMT_WRONG_DIRECTION ({smt} vs BUY)"
+        if direction == "SELL" and smt != "BEARISH":
+            return f"SMT_WRONG_DIRECTION ({smt} vs SELL)"
+
+        logger.info("[%s] SMT confirmed: %s divergence with %s",
+                    ctx.symbol, smt, corr_sym)
+        return None
+
     # ---------------------------------------------------------------- execution
 
     def _execute_setup(self, ctx, connector, setup, strategy_name, df_liq, now):
         """Validate, size, and execute a setup from any strategy."""
         sym = ctx.symbol
 
-        # Liquidity TP (for non-AMD/SB strategies that don't set their own TP)
+        # TP comes from the DOL target set in _scan_symbol, or fixed RRR fallback.
         tp = setup["tp"]
-        if ctx.cfg.use_liquidity_tp and df_liq is not None and setup.get("model") is None:
-            entry_price = connector.entry_price(
-                mt5.ORDER_TYPE_BUY if setup["direction"] == "BUY"
-                else mt5.ORDER_TYPE_SELL)
-            if entry_price:
-                liq = SMCStrategy.find_nearest_liquidity(
-                    df_liq, setup["direction"], entry_price,
-                    strength=SWING_STRENGTH, use_closed_candles=True)
-                if liq is not None:
-                    risk = abs(entry_price - setup["sl"])
-                    liq_dist = abs(liq - entry_price)
-                    liq_rr = liq_dist / risk if risk > 0 else 0
-                    if liq_rr >= ctx.cfg.min_rr_liquidity:
-                        tp = liq
+
+        # Liquidity resistance filter: classify target, adjust risk or skip
+        liq_resistance = None
+        if ctx.cfg.use_liquidity_resistance and df_liq is not None:
+            liq_resistance = SMCStrategy.classify_liquidity_resistance(
+                df_liq, tp, setup["direction"],
+                swing_strength=SWING_STRENGTH,
+                use_closed_candles=True)
+            if liq_resistance == "HIGH":
+                if ctx.cfg.high_resistance_risk_factor <= 0:
+                    ctx.state.record_rejection("HIGH_RESISTANCE_TARGET")
+                    logger.info("[%s] %s REJECTED: only high resistance liquidity target.",
+                                sym, strategy_name)
+                    return
+                logger.info("[%s] %s: high resistance target — risk reduced to %.0f%%.",
+                            sym, strategy_name, ctx.cfg.high_resistance_risk_factor * 100)
 
         # Max OB risk width filter (backtest 2026-09-16: XAUUSD outlier OBs)
         if ctx.cfg.max_ob_risk_px > 0:
@@ -485,6 +567,15 @@ class MultiSymbolEngine:
             ctx.state.record_rejection("SIZING_FAILED")
             return
 
+        # Apply liquidity resistance risk reduction
+        if liq_resistance == "HIGH" and ctx.cfg.high_resistance_risk_factor < 1.0:
+            from decimal import Decimal, ROUND_DOWN
+            reduced = lots * ctx.cfg.high_resistance_risk_factor
+            step = Decimal(str(ctx.spec.volume_step))
+            lots = float(Decimal(str(reduced)).quantize(step, rounding=ROUND_DOWN))
+            lots = max(lots, ctx.spec.volume_min)
+            logger.info("[%s] Lots reduced to %.2f (high resistance target).", sym, lots)
+
         # Execute
         logger.info(
             "[%s] %s SETUP: %s entry=%.5f sl=%.5f tp=%.5f lots=%.2f",
@@ -524,7 +615,17 @@ class MultiSymbolEngine:
                 sym, setup["direction"], lots,
                 entry_price, setup["sl"], actual_tp,
                 risk * lots * ctx.spec.contract_size, bal)
+            # Journal: record trade open
+            ticket = new_positions[0].ticket if new_positions else 0
+            self.db.record_trade(
+                symbol=sym, ticket=ticket, direction=setup["direction"],
+                entry=entry_price, sl=setup["sl"], tp=actual_tp, volume=lots,
+                entry_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                strategy=strategy_name,
+                smt_confirmed=bool(ctx.cfg.require_smt and ctx.cfg.smt_correlated_symbol),
+                liq_resistance=liq_resistance or "")
             self._reset_watch(ctx)
+            self._global_trades_today += 1
         else:
             ctx.state.record_rejection("ORDER_FAILED")
 
@@ -658,10 +759,29 @@ class MultiSymbolEngine:
             ctx.state.consecutive_losses, ctx.state.trades_today,
             ctx.state.daily_pnl)
 
+        # Persist to journal and DB
+        now_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        date_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+        self.db.update_daily(date_str, ctx.symbol, pnl, pnl > 0)
+        self.db.save_symbol_state(
+            ctx.symbol, ctx.state.consecutive_losses,
+            ctx.state.paused, ctx.state.pause_reason)
+
+        # Update the trade record with exit info
+        try:
+            self.db.conn.execute(
+                "UPDATE trades SET pnl=?, exit_time=?, exit_reason=? "
+                "WHERE ticket=? AND pnl=0",
+                (pnl, now_str, "SL" if pnl < 0 else "TP", ticket))
+            self.db.conn.commit()
+        except Exception:
+            logger.warning("[%s] Failed to update trade record for #%s.", ctx.symbol, ticket)
+
         telegram_bot.send_message(
             f"{'✅' if pnl >= 0 else '❌'} <b>{ctx.symbol}</b> closed: "
             f"${pnl:+.2f} | "
             f"Day: ${ctx.state.daily_pnl:+.2f} | "
+            f"Week: ${ctx.state.weekly_pnl:+.2f} | "
             f"Trades today: {ctx.state.trades_today}")
 
     def _reset_watch(self, ctx: SymbolContext):

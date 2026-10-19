@@ -75,7 +75,7 @@ LTF_CANDLES_LOOKBACK: int = 100
 # standard error on expectancy is about ±0.35R, so every value in the sweep
 # sits inside one error bar of every other.  2.5 is a reasonable pick, not a
 # measured optimum.  Regenerate the sweep with `reports/engine.py --sweep`.
-RRR: float = 3.0
+RRR: float = 2.0  # Backtest 11mo BTCUSD swing: expR +0.357, PF 1.74, MaxDD 2.82%
 
 # Stop placement.  Measured on the same data (`reports/engine.py --stops`):
 #   "window"  extreme of the last 10 M1 candles — expR +0.370  <- best
@@ -84,7 +84,7 @@ RRR: float = 3.0
 # The structural rules are more defensible in theory and measurably worse
 # here: the bot is fading its own signal, so a tighter stop on the fade side
 # is simply hit more often.  Keeping "window" on the evidence.
-STOP_MODE: str = "window"  # "window" | "ob" | "swing" | "zone"
+STOP_MODE: str = "swing"  # "swing" | "ob" | "window" | "zone" — plan rule 14
 STOP_BUFFER_ATR: float = 0.5  # wick buffer for "swing"/"zone", in 1m ATRs
 MAX_LTF_WAIT_CANDLES: int = 15  # Max 1m candles to wait for MSS after HTF touch
 
@@ -106,6 +106,23 @@ POLL_INTERVAL: int = 10
 # Trend Filter Parameters
 USE_TREND_FILTER: bool = True
 TREND_EMA_PERIOD: int = 100  # EMA period used to define the macro trend
+
+# News filter: on these weekdays, only trade if high-impact news is scheduled.
+# 0=Monday, 1=Tuesday.  Per trading plan: Mon/Tue without news = no trades.
+TRADE_ONLY_NEWS_DAYS: list = [0, 1]
+# When True, all trades (any day) must be within 60min of a high-impact event.
+# Plan rule 7: "only trade during high impact news"
+REQUIRE_HIGH_IMPACT_NEWS: bool = True
+
+# SMT divergence: correlated symbol for divergence checks.
+# Empty = no SMT required.  Set per-symbol in config_<symbol>.py.
+SMT_CORRELATED_SYMBOL: str = ""
+REQUIRE_SMT: bool = True
+
+# Liquidity resistance filter
+USE_LIQUIDITY_RESISTANCE: bool = True
+LOW_RESISTANCE_RISK_FACTOR: float = 1.0    # full risk for low resistance targets
+HIGH_RESISTANCE_RISK_FACTOR: float = 0.25  # 1/4 risk for high resistance targets
 
 # Weekend filter.  Crypto markets are open 24/7, but weekend price action is
 # thin and choppy.  Backtested on 70 days (2026-06 to 2026-08): keeping this
@@ -152,7 +169,11 @@ MIN_RRR_LIQUIDITY: float = 0.5     # minimum R:R to take the trade
 # of entry.  Beyond that the minimum lot takes over and the real risk exceeds
 # RISK_PERCENT; the connector logs a warning when that happens.
 USE_RISK_BASED_LOT: bool = True
-RISK_PERCENT: float = 1.0  # % of balance risked per trade
+RISK_PERCENT: float = 0.4  # % of balance risked per trade
+
+# Account type: "funded" = 0.4% risk, "challenge" = 0.6% risk.
+# Overrides RISK_PERCENT when set.
+ACCOUNT_TYPE: str = "funded"  # "funded" | "challenge" | "custom"
 
 # Skip entries while the spread is abnormally wide.  0 disables the filter.
 # Measured on Exness-MT5Trial15 BTCUSD: 700 points (= $7.00) at a quiet moment,
@@ -160,6 +181,13 @@ RISK_PERCENT: float = 1.0  # % of balance risked per trade
 # the risk on every entry.  Watch the logged spread across a session, then set
 # this above the normal range but below the news/rollover spikes.
 MAX_SPREAD_POINTS: int = 0
+
+# Max 1 trade per day across all symbols (discretionary plan rule).
+MAX_TRADES_PER_DAY: int = 1
+
+# Weekly/monthly profit caps — stop trading when reached.
+MAX_WEEKLY_PROFIT_PCT: float = 2.0   # 2% per week
+MAX_MONTHLY_PROFIT_PCT: float = 6.0  # 6% per month
 
 # Move the stop loss to break-even once the trade is this many R in profit.
 USE_BREAKEVEN: bool = False
@@ -174,7 +202,7 @@ BREAKEVEN_R: float = 2.0
 #   Both 0             →  no cap
 # 0.5% tested on XAUUSD: passes 63% of trades, cuts outsized stops.
 MAX_RISK_PCT: float = 0.0    # % of account balance (0 = disabled)
-MAX_RISK_USD: float = 80.0   # hard dollar cap (0 = disabled)
+MAX_RISK_USD: float = 0.0    # hard dollar cap (0 = disabled); set per-symbol in config_<symbol>.py
 
 USE_PARTIAL_CLOSE: bool = True
 PARTIAL_TRIGGER_PCT: float = 0.80   # 80% of TP distance

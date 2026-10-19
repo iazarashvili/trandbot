@@ -4,11 +4,12 @@ from config import *  # noqa: F401,F403
 SYMBOL = "BTCUSD"
 LOT_SIZE = 0.01           # fallback if USE_RISK_BASED_LOT=False
 USE_RISK_BASED_LOT = True
-RISK_PERCENT = 1.0        # 1% of balance per trade
+RISK_PERCENT = 0.4        # overridden by ACCOUNT_TYPE if set
 MAGIC_NUMBER = 100200
-STOP_MODE = "window"
+STOP_MODE = "swing"  # plan rule 14: SL at swing high/low
 MAX_RISK_USD = 0.0     # disabled — %-based sizing controls risk
 MAX_RISK_PCT = 0.0
+RRR = 2.0  # Backtest 11mo swing: expR +0.357, PF 1.74, MaxDD 2.82%
 NIGHT_START_HOUR = 20
 NIGHT_END_HOUR = 23
 BLOCKED_DAYS = []
@@ -19,6 +20,9 @@ BLOCKED_SB_HOURS = [15]
 
 # Backtest 2026-09-16: AMD at 09-10:xx = 8 trades, 0% WR, -$763.
 BLOCKED_AMD_HOURS = [9, 10]
+
+# SMT: compare with ETH for divergence confirmation
+SMT_CORRELATED_SYMBOL = "ETHUSD"
 
 # IFVG filter: PF 1.23->1.60, WR 27->34%, Net x2, MaxDD 3.5->2.3% (2026-09-01)
 # NOT WIRED — measured in reports/test_ict_filters.py only.  SymbolConfig loads

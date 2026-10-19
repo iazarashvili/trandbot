@@ -18,8 +18,13 @@ __pycache__/
 # Logs
 *.log
 
+# Bot runtime data
+bot_state.db
+.news_cache.json
+charts/
+
 # Backtest history cache (re-pull with: python reports/engine.py --refresh)
-reports/_history.pkl
+reports/_history*.pkl
 
 # Generated backtest output.  Regenerate with reports/engine.py + build_report.py;
 # reports/multi_strategy_report.html is the one committed report.

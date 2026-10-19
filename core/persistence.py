@@ -33,6 +33,7 @@ class BotDatabase:
                 symbol TEXT NOT NULL,
                 ticket INTEGER,
                 direction TEXT NOT NULL,
+                strategy TEXT DEFAULT '',
                 entry_price REAL,
                 sl REAL,
                 tp REAL,
@@ -44,6 +45,10 @@ class BotDatabase:
                 entry_time TEXT,
                 exit_time TEXT,
                 exit_reason TEXT,
+                smt_confirmed INTEGER DEFAULT 0,
+                news_context TEXT DEFAULT '',
+                liq_resistance TEXT DEFAULT '',
+                notes TEXT DEFAULT '',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -77,19 +82,40 @@ class BotDatabase:
             );
         """)
         self.conn.commit()
+        self._migrate()
+
+    def _migrate(self):
+        """Add columns that may be missing from an older schema."""
+        cursor = self.conn.execute("PRAGMA table_info(trades)")
+        existing = {row[1] for row in cursor.fetchall()}
+        new_cols = {
+            "strategy": "TEXT DEFAULT ''",
+            "smt_confirmed": "INTEGER DEFAULT 0",
+            "news_context": "TEXT DEFAULT ''",
+            "liq_resistance": "TEXT DEFAULT ''",
+            "notes": "TEXT DEFAULT ''",
+        }
+        for col, typedef in new_cols.items():
+            if col not in existing:
+                self.conn.execute(f"ALTER TABLE trades ADD COLUMN {col} {typedef}")
+        self.conn.commit()
 
     # ---- Trades ----
     def record_trade(self, symbol: str, ticket: int, direction: str,
                      entry: float, sl: float, tp: float, volume: float,
                      pnl: float = 0, r_multiple: float = 0,
                      setup_score: int = 0, entry_time: str = "",
-                     exit_time: str = "", exit_reason: str = ""):
+                     exit_time: str = "", exit_reason: str = "",
+                     strategy: str = "", smt_confirmed: bool = False,
+                     news_context: str = "", liq_resistance: str = ""):
         self.conn.execute(
-            "INSERT INTO trades (symbol, ticket, direction, entry_price, sl, tp, "
-            "volume, pnl, r_multiple, setup_score, entry_time, exit_time, exit_reason) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (symbol, ticket, direction, entry, sl, tp, volume, pnl,
-             r_multiple, setup_score, entry_time, exit_time, exit_reason))
+            "INSERT INTO trades (symbol, ticket, direction, strategy, entry_price, sl, tp, "
+            "volume, pnl, r_multiple, setup_score, entry_time, exit_time, exit_reason, "
+            "smt_confirmed, news_context, liq_resistance) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (symbol, ticket, direction, strategy, entry, sl, tp, volume, pnl,
+             r_multiple, setup_score, entry_time, exit_time, exit_reason,
+             int(smt_confirmed), news_context, liq_resistance))
         self.conn.commit()
 
     def record_rejection(self, symbol: str, reason: str, details: str = ""):

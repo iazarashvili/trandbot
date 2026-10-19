@@ -47,6 +47,35 @@ from strategy import SMCStrategy  # noqa: E402
 HERE = Path(__file__).resolve().parent
 CACHE = HERE / "_history.pkl"
 
+# Per-symbol overrides — set by --symbol CLI flag
+_SYMBOL_OVERRIDE = None
+
+def _active_symbol():
+    return _SYMBOL_OVERRIDE or SYMBOL
+
+def _cache_path():
+    sym = _active_symbol()
+    return HERE / f"_history_{sym.lower()}.pkl"
+
+def _load_symbol_config(symbol: str):
+    """Load per-symbol config overrides."""
+    import importlib
+    try:
+        mod = importlib.import_module(f"config_{symbol.lower()}")
+    except ModuleNotFoundError:
+        mod = importlib.import_module("config")
+    return {
+        "night_start": getattr(mod, "NIGHT_START_HOUR", NIGHT_START_HOUR),
+        "night_end": getattr(mod, "NIGHT_END_HOUR", NIGHT_END_HOUR),
+        "blocked_days": list(getattr(mod, "BLOCKED_DAYS", BLOCKED_DAYS)),
+        "skip_weekends": getattr(mod, "SKIP_WEEKENDS", SKIP_WEEKENDS),
+        "risk_percent": getattr(mod, "RISK_PERCENT", RISK_PERCENT),
+        "max_risk_usd": getattr(mod, "MAX_RISK_USD", MAX_RISK_USD),
+        "max_risk_pct": getattr(mod, "MAX_RISK_PCT", MAX_RISK_PCT),
+        "rrr": getattr(mod, "RRR", 2.0),
+        "stop_mode": getattr(mod, "STOP_MODE", STOP_MODE),
+    }
+
 START_BALANCE = 100_000.0
 VOLUME = 1.0
 M5_BARS = 100_000    # ~11 months of 5m data
@@ -57,16 +86,17 @@ M15_BARS = 50_000    # ~6 months of 15m data (for liquidity levels)
 # ---------------------------------------------------------------- data
 def load_data(refresh: bool = False):
     """Returns (m5, h1, m15_liq, contract_size, point), cached on disk."""
-    if CACHE.exists() and not refresh:
-        blob = pd.read_pickle(CACHE)
-        # Support old cache format gracefully
+    sym = _active_symbol()
+    cache = _cache_path()
+    if cache.exists() and not refresh:
+        blob = pd.read_pickle(cache)
         if "m5" in blob:
             return blob["m5"], blob["h1"], blob["m15_liq"], blob["contract"], blob["point"]
 
     import MetaTrader5 as mt5
     from mt5_connector import MT5Connector
 
-    c = MT5Connector(symbol=SYMBOL, magic_number=0)
+    c = MT5Connector(symbol=sym, magic_number=0)
     if not c.initialize():
         raise RuntimeError("MT5 is not reachable — start the terminal and retry.")
     info = c.symbol_info()
@@ -75,15 +105,15 @@ def load_data(refresh: bool = False):
     frames = {}
     for key, tf, n in (("m5", LTF, M5_BARS), ("h1", HTF, H1_BARS),
                         ("m15_liq", LIQUIDITY_TF, M15_BARS)):
-        rates = mt5.copy_rates_from_pos(SYMBOL, tf, 0, n)
+        rates = mt5.copy_rates_from_pos(sym, tf, 0, n)
         df = pd.DataFrame(rates)
         df["time"] = pd.to_datetime(df["time"], unit="s")
         frames[key] = df
     c.shutdown()
 
-    pd.to_pickle({**frames, "contract": contract, "point": point}, CACHE)
+    pd.to_pickle({**frames, "contract": contract, "point": point}, cache)
     print(f"cached {len(frames['m5'])} M5 / {len(frames['h1'])} H1 / "
-          f"{len(frames['m15_liq'])} M15 bars -> {CACHE.name}")
+          f"{len(frames['m15_liq'])} M15 bars -> {cache.name} ({sym})")
     return frames["m5"], frames["h1"], frames["m15_liq"], contract, point
 
 
@@ -471,7 +501,7 @@ def summarize(trades, equity, balance, times, start, rrr, invert,
     return {
         "summary": {
             "mode": "INVERTED" if invert else "AS-SIGNALLED",
-            "symbol": SYMBOL, "rrr": rrr,
+            "symbol": _active_symbol(), "rrr": rrr,
             "period_from": str(times.iloc[start]), "period_to": str(times.iloc[-1]),
             "days": round((times.iloc[-1] - times.iloc[start]).total_seconds() / 86400, 1),
             "m5_bars": n_bars, "start_balance": START_BALANCE, "volume": VOLUME,
@@ -503,7 +533,9 @@ def summarize(trades, equity, balance, times, start, rrr, invert,
 # ---------------------------------------------------------------- CLI
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--rrr", type=float, default=3.0)
+    ap.add_argument("--symbol", type=str, default=None,
+                    help="symbol to backtest (default: from config.py)")
+    ap.add_argument("--rrr", type=float, default=None)
     ap.add_argument("--invert", action="store_true")
     ap.add_argument("--one-shot", action="store_true",
                     help="a zone that produced a loss is not traded again")
@@ -522,6 +554,18 @@ def main():
     ap.add_argument("--refresh", action="store_true")
     ap.add_argument("--out", type=str, default=None)
     args = ap.parse_args()
+
+    global _SYMBOL_OVERRIDE
+    sym_cfg = {}
+    if args.symbol:
+        _SYMBOL_OVERRIDE = args.symbol.upper()
+        sym_cfg = _load_symbol_config(_SYMBOL_OVERRIDE)
+    else:
+        sym_cfg = _load_symbol_config(SYMBOL)
+
+    # Use per-symbol RRR as default if not explicitly set
+    if args.rrr is None:
+        args.rrr = sym_cfg.get("rrr", 2.0)
 
     m5, h1, m15_liq, contract, point = load_data(refresh=args.refresh)
     print(f"{len(m5)} M5 bars  {m5['time'].iloc[0]} .. {m5['time'].iloc[-1]}")

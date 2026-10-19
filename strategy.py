@@ -1507,3 +1507,124 @@ class SMCStrategy:
                 "dol": round(dol_low, 5),
                 "window": f"{current_hour_utc}:00 UTC",
             }
+
+    # ------------------------------------------------------------------
+    # SMT Divergence (Smart Money Tool)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def detect_smt_divergence(
+        df_main: pd.DataFrame,
+        df_correlated: pd.DataFrame,
+        swing_strength: int = 3,
+        lookback: int = 30,
+        use_closed_candles: bool = True,
+    ) -> Optional[Literal["BULLISH", "BEARISH"]]:
+        """Detect SMT divergence between two correlated instruments.
+
+        SMT divergence occurs when one instrument makes a new swing high/low
+        but the correlated instrument fails to confirm it:
+
+        BULLISH SMT: main makes a lower low, correlated does NOT -> reversal up
+        BEARISH SMT: main makes a higher high, correlated does NOT -> reversal down
+
+        Returns "BULLISH", "BEARISH", or None if no divergence.
+        """
+        main = SMCStrategy.closed_candles(df_main, use_closed_candles)
+        corr = SMCStrategy.closed_candles(df_correlated, use_closed_candles)
+
+        if len(main) < lookback or len(corr) < lookback:
+            return None
+
+        main_recent = main.iloc[-lookback:]
+        corr_recent = corr.iloc[-lookback:]
+
+        # Find swing highs and lows in recent data
+        main_highs = main_recent["high"].to_numpy(float)
+        main_lows = main_recent["low"].to_numpy(float)
+        corr_highs = corr_recent["high"].to_numpy(float)
+        corr_lows = corr_recent["low"].to_numpy(float)
+
+        # Find the last two swing lows on main
+        swing_low_indices = []
+        for i in range(swing_strength, len(main_lows) - swing_strength):
+            if main_lows[i] == np.min(main_lows[max(0, i - swing_strength): i + swing_strength + 1]):
+                swing_low_indices.append(i)
+
+        # Find the last two swing highs on main
+        swing_high_indices = []
+        for i in range(swing_strength, len(main_highs) - swing_strength):
+            if main_highs[i] == np.max(main_highs[max(0, i - swing_strength): i + swing_strength + 1]):
+                swing_high_indices.append(i)
+
+        # Bullish SMT: main made lower low, correlated didn't
+        if len(swing_low_indices) >= 2:
+            prev_idx = swing_low_indices[-2]
+            curr_idx = swing_low_indices[-1]
+            main_lower_low = main_lows[curr_idx] < main_lows[prev_idx]
+
+            if main_lower_low and curr_idx < len(corr_lows) and prev_idx < len(corr_lows):
+                corr_lower_low = corr_lows[curr_idx] < corr_lows[prev_idx]
+                if not corr_lower_low:
+                    return "BULLISH"
+
+        # Bearish SMT: main made higher high, correlated didn't
+        if len(swing_high_indices) >= 2:
+            prev_idx = swing_high_indices[-2]
+            curr_idx = swing_high_indices[-1]
+            main_higher_high = main_highs[curr_idx] > main_highs[prev_idx]
+
+            if main_higher_high and curr_idx < len(corr_highs) and prev_idx < len(corr_highs):
+                corr_higher_high = corr_highs[curr_idx] > corr_highs[prev_idx]
+                if not corr_higher_high:
+                    return "BEARISH"
+
+        return None
+
+    # ------------------------------------------------------------------
+    # Liquidity Resistance Classification
+    # ------------------------------------------------------------------
+    @staticmethod
+    def classify_liquidity_resistance(
+        df: pd.DataFrame,
+        target_level: float,
+        direction: str,
+        swing_strength: int = 3,
+        tolerance_atr_mult: float = 0.5,
+        use_closed_candles: bool = True,
+    ) -> Literal["LOW", "HIGH"]:
+        """Classify a liquidity target as low or high resistance.
+
+        LOW resistance = fresh level, tested 0-1 times (easy to sweep)
+        HIGH resistance = tested 2+ times without breaking (harder to reach)
+
+        A level is "tested" each time price comes within tolerance and reverses.
+        """
+        data = SMCStrategy.closed_candles(df, use_closed_candles)
+        if len(data) < 20:
+            return "LOW"
+
+        # ATR for tolerance
+        ranges = (data["high"] - data["low"]).to_numpy(float)
+        atr = float(ranges[-14:].mean()) if len(ranges) >= 14 else float(ranges.mean())
+        if atr <= 0:
+            return "LOW"
+        tolerance = atr * tolerance_atr_mult
+
+        highs = data["high"].to_numpy(float)
+        lows = data["low"].to_numpy(float)
+        closes = data["close"].to_numpy(float)
+
+        touches = 0
+        for i in range(len(data)):
+            if direction == "BUY":
+                # For buy targets (swing highs), count how many times price
+                # reached near the level but failed to close above
+                if highs[i] >= target_level - tolerance and closes[i] < target_level:
+                    touches += 1
+            else:
+                # For sell targets (swing lows), count how many times price
+                # reached near the level but failed to close below
+                if lows[i] <= target_level + tolerance and closes[i] > target_level:
+                    touches += 1
+
+        return "HIGH" if touches >= 2 else "LOW"

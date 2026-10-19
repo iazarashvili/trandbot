@@ -90,8 +90,21 @@ class SymbolConfig:
     max_consecutive_losses: int = 3
     max_daily_loss_pct: float = 4.0
     daily_loss_buffer_pct: float = 0.5   # stop at 3.5% if limit is 4%
-    max_trades_per_day: int = 10
+    max_trades_per_day: int = 1
     cooldown_candles: int = 3
+    account_type: str = "funded"  # "funded"=0.4%, "challenge"=0.6%, "custom"=use RISK_PERCENT
+    max_weekly_profit_pct: float = 2.0
+    max_monthly_profit_pct: float = 6.0
+    # SMT divergence
+    smt_correlated_symbol: str = ""  # e.g. "ETHUSD" for BTCUSD, "EURUSD" for GBPUSD
+    require_smt: bool = True         # gate trades on SMT confirmation
+    # News filter
+    trade_only_news_days: list = field(default_factory=list)  # weekdays that require news (0=Mon,1=Tue)
+    require_high_impact_news: bool = False  # only trade during high impact news windows
+    # Liquidity resistance
+    use_liquidity_resistance: bool = True
+    low_resistance_risk_factor: float = 1.0    # full risk on low resistance targets
+    high_resistance_risk_factor: float = 0.25  # 1/4 risk on high resistance targets
 
     @classmethod
     def load(cls, symbol: str) -> "SymbolConfig":
@@ -101,12 +114,12 @@ class SymbolConfig:
         except ModuleNotFoundError:
             mod = importlib.import_module("config")
 
-        return cls(
+        cfg = cls(
             symbol=symbol,
             enabled=True,
             lot_size=getattr(mod, "LOT_SIZE", 0.01),
             magic_number=getattr(mod, "MAGIC_NUMBER", 100200),
-            risk_percent=getattr(mod, "RISK_PERCENT", 0.5),
+            risk_percent=getattr(mod, "RISK_PERCENT", 0.4),
             stop_mode=getattr(mod, "STOP_MODE", "window"),
             max_risk_usd=getattr(mod, "MAX_RISK_USD", 80.0),
             max_risk_pct=getattr(mod, "MAX_RISK_PCT", 0.0),
@@ -140,9 +153,26 @@ class SymbolConfig:
             max_consecutive_losses=getattr(mod, "MAX_CONSECUTIVE_LOSSES", 3),
             max_daily_loss_pct=getattr(mod, "MAX_DAILY_LOSS_PCT", 4.0),
             daily_loss_buffer_pct=getattr(mod, "DAILY_LOSS_BUFFER_PCT", 0.5),
-            max_trades_per_day=getattr(mod, "MAX_TRADES_PER_DAY", 10),
+            max_trades_per_day=getattr(mod, "MAX_TRADES_PER_DAY", 1),
             cooldown_candles=getattr(mod, "COOLDOWN_CANDLES", 3),
+            account_type=getattr(mod, "ACCOUNT_TYPE", "funded"),
+            max_weekly_profit_pct=getattr(mod, "MAX_WEEKLY_PROFIT_PCT", 2.0),
+            max_monthly_profit_pct=getattr(mod, "MAX_MONTHLY_PROFIT_PCT", 6.0),
+            smt_correlated_symbol=getattr(mod, "SMT_CORRELATED_SYMBOL", ""),
+            require_smt=getattr(mod, "REQUIRE_SMT", True),
+            trade_only_news_days=list(getattr(mod, "TRADE_ONLY_NEWS_DAYS", [])),
+            require_high_impact_news=getattr(mod, "REQUIRE_HIGH_IMPACT_NEWS", False),
+            use_liquidity_resistance=getattr(mod, "USE_LIQUIDITY_RESISTANCE", True),
+            low_resistance_risk_factor=getattr(mod, "LOW_RESISTANCE_RISK_FACTOR", 1.0),
+            high_resistance_risk_factor=getattr(mod, "HIGH_RESISTANCE_RISK_FACTOR", 0.25),
         )
+
+        # Resolve account type -> risk_percent
+        _ACCOUNT_RISK = {"funded": 0.4, "challenge": 0.6}
+        if cfg.account_type in _ACCOUNT_RISK:
+            cfg.risk_percent = _ACCOUNT_RISK[cfg.account_type]
+
+        return cfg
 
 
 @dataclass
@@ -165,6 +195,12 @@ class SymbolState:
     paused: bool = False
     pause_reason: str = ""
 
+    # Weekly/monthly profit tracking
+    weekly_pnl: float = 0.0
+    weekly_reset_key: Optional[str] = None   # "2026-W42"
+    monthly_pnl: float = 0.0
+    monthly_reset_key: Optional[str] = None  # "2026-10"
+
     # Position tracking — used to detect when a position closes (SL/TP/manual)
     last_position_ticket: Optional[int] = None
 
@@ -180,9 +216,23 @@ class SymbolState:
             self.trades_today = 0
             self.daily_pnl = 0.0
 
+    def reset_periodic(self, now):
+        """Reset weekly/monthly P&L counters when the period rolls over."""
+        week_key = now.strftime("%G-W%V")
+        if self.weekly_reset_key != week_key:
+            self.weekly_reset_key = week_key
+            self.weekly_pnl = 0.0
+
+        month_key = now.strftime("%Y-%m")
+        if self.monthly_reset_key != month_key:
+            self.monthly_reset_key = month_key
+            self.monthly_pnl = 0.0
+
     def record_trade_result(self, pnl: float):
         self.trades_today += 1
         self.daily_pnl += pnl
+        self.weekly_pnl += pnl
+        self.monthly_pnl += pnl
         if pnl <= 0:
             self.consecutive_losses += 1
         else:
@@ -229,6 +279,20 @@ class SymbolContext:
         if self.cfg.blocked_days and now.weekday() in self.cfg.blocked_days:
             return "BLOCKED_DAY"
 
+        # News filter: certain days (Mon/Tue) require high-impact news
+        if self.cfg.trade_only_news_days and now.weekday() in self.cfg.trade_only_news_days:
+            from news_calendar import get_calendar
+            cal = get_calendar()
+            if not cal.has_high_impact_today(self.symbol, now):
+                return "NO_HIGH_IMPACT_NEWS"
+
+        # Require proximity to high-impact news (optional)
+        if self.cfg.require_high_impact_news:
+            from news_calendar import get_calendar
+            cal = get_calendar()
+            if not cal.is_near_high_impact(self.symbol, now, window_minutes=60):
+                return "NOT_NEAR_NEWS"
+
         # Night filter
         ns, ne = self.cfg.night_start, self.cfg.night_end
         if ns != ne:
@@ -261,6 +325,19 @@ class SymbolContext:
             if now < self.state.cooldown_until:
                 return "COOLDOWN"
             self.state.cooldown_until = None  # expired, clear it
+
+        # Weekly/Monthly profit caps
+        if self.cfg.max_weekly_profit_pct > 0 or self.cfg.max_monthly_profit_pct > 0:
+            acct = mt5.account_info()
+            if acct and acct.balance > 0:
+                if self.cfg.max_weekly_profit_pct > 0:
+                    weekly_pct = self.state.weekly_pnl / acct.balance * 100
+                    if weekly_pct >= self.cfg.max_weekly_profit_pct:
+                        return "WEEKLY_PROFIT_CAP"
+                if self.cfg.max_monthly_profit_pct > 0:
+                    monthly_pct = self.state.monthly_pnl / acct.balance * 100
+                    if monthly_pct >= self.cfg.max_monthly_profit_pct:
+                        return "MONTHLY_PROFIT_CAP"
 
         # Paused
         if self.state.paused:

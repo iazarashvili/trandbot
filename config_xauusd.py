@@ -4,7 +4,7 @@ from config import *  # noqa: F401,F403
 SYMBOL = "XAUUSD"
 LOT_SIZE = 0.01           # fallback if USE_RISK_BASED_LOT=False
 USE_RISK_BASED_LOT = True
-RISK_PERCENT = 1.0        # 1% of balance per trade
+RISK_PERCENT = 0.4        # overridden by ACCOUNT_TYPE if set
 MAGIC_NUMBER = 100201
 STOP_MODE = "ob"
 MAX_RISK_USD = 40.0       # hard cap $40 per trade
@@ -18,8 +18,10 @@ NIGHT_END_HOUR = 2
 # Thursday blocked: 7 trades, 14% WR, -$413 (3 biggest losses on Thu, 2026-09-16)
 BLOCKED_DAYS = [3, 4]  # 3=Thursday, 4=Friday
 
-# RRR 3.5: measured peak on 81 trades — PF 1.31, expR +0.167 (2026-08-29)
-RRR = 3.5
+# SMT: compare with silver for divergence confirmation
+SMT_CORRELATED_SYMBOL = "XAGUSD"
+
+RRR = 2.0
 
 # Sweep filter ON: PF 1.42->1.84, MaxDD 15.1%->6.9%, filters 38 bad trades (2026-08-29)
 USE_SWEEP_FILTER = True
