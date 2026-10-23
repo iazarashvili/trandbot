@@ -15,14 +15,7 @@ NIGHT_START_HOUR = 19
 NIGHT_END_HOUR = 23
 BLOCKED_DAYS = []
 
-# Backtest 2026-09-16: SB at 15:xx = 39 trades, 23% WR, -$1044.
-# SB at 08:xx = 38 trades, 45% WR, +$1360. Block the losing window.
-BLOCKED_SB_HOURS = [15]
-
-# Backtest 2026-09-16: AMD at 09-10:xx = 8 trades, 0% WR, -$763.
-BLOCKED_AMD_HOURS = [9, 10]
-
-# SMT: compare with ETH for divergence confirmation
+# SMT: compare with ETH for divergence confirmation (disabled globally)
 SMT_CORRELATED_SYMBOL = "ETHUSD"
 
 # IFVG filter: PF 1.23->1.60, WR 27->34%, Net x2, MaxDD 3.5->2.3% (2026-09-01)

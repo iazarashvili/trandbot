@@ -24,8 +24,6 @@ SMT_CORRELATED_SYMBOL = "GBPUSD"
 # Blocking BEARISH trend entirely: 66 trades removed, -$2456 -> +$314.
 BLOCKED_TRENDS = ["BEARISH"]
 
-# Backtest 2026-09-16: SB 15:xx = 62 trades, 27% WR, -$1069.
-BLOCKED_SB_HOURS = [15]
 
 # Trailing stop is not implemented — SymbolConfig does not load these fields.
 

@@ -63,8 +63,6 @@ class SymbolConfig:
     min_rr_liquidity: float = 0.5
     use_trend_filter: bool = True
     trend_ema_period: int = 100
-    use_sweep_filter: bool = False
-    use_asian_range: bool = False
     use_premium_discount: bool = False
     # NOT WIRED: use_structure_shift, use_breaker_blocks, use_po3 and use_ifvg
     # are loaded below but no executing path reads them.  The detectors exist in
@@ -81,9 +79,7 @@ class SymbolConfig:
     partial_trigger_pct: float = 0.80
     partial_close_pct: float = 0.80
     max_spread_points: int = 0
-    # Session/strategy filters (from backtest analysis 2026-09-16)
-    blocked_sb_hours: list = field(default_factory=list)  # UTC hours where Silver Bullet is skipped
-    blocked_amd_hours: list = field(default_factory=list)  # UTC hours where AMD is skipped
+    # Session filters (from backtest analysis 2026-09-16)
     blocked_trends: list = field(default_factory=list)     # trend directions to skip ("BEARISH", "BULLISH")
     max_ob_risk_px: float = 0.0                            # max OB stop width in price; 0=disabled
     # Phase 1: risk
@@ -132,8 +128,6 @@ class SymbolConfig:
             min_rr_liquidity=getattr(mod, "MIN_RRR_LIQUIDITY", 0.5),
             use_trend_filter=getattr(mod, "USE_TREND_FILTER", True),
             trend_ema_period=getattr(mod, "TREND_EMA_PERIOD", 100),
-            use_sweep_filter=getattr(mod, "USE_SWEEP_FILTER", False),
-            use_asian_range=getattr(mod, "USE_ASIAN_RANGE", False),
             use_premium_discount=getattr(mod, "USE_PREMIUM_DISCOUNT", False),
             use_structure_shift=getattr(mod, "USE_STRUCTURE_SHIFT", False),
             use_breaker_blocks=getattr(mod, "USE_BREAKER_BLOCKS", False),
@@ -146,8 +140,6 @@ class SymbolConfig:
             partial_trigger_pct=getattr(mod, "PARTIAL_TRIGGER_PCT", 0.80),
             partial_close_pct=getattr(mod, "PARTIAL_CLOSE_PCT", 0.80),
             max_spread_points=getattr(mod, "MAX_SPREAD_POINTS", 0),
-            blocked_sb_hours=list(getattr(mod, "BLOCKED_SB_HOURS", [])),
-            blocked_amd_hours=list(getattr(mod, "BLOCKED_AMD_HOURS", [])),
             blocked_trends=list(getattr(mod, "BLOCKED_TRENDS", [])),
             max_ob_risk_px=getattr(mod, "MAX_OB_RISK_PX", 0.0),
             max_consecutive_losses=getattr(mod, "MAX_CONSECUTIVE_LOSSES", 3),

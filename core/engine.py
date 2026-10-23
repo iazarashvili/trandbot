@@ -41,14 +41,12 @@ RECOVERY_SLEEP = 30
 DEFAULT_SYMBOLS = ["BTCUSD", "GBPUSD"]
 
 # ICT macro time windows (UTC hours).  Only trade during these.
-# London killzone 02:00-05:00, NY AM 08:00-11:00 (Silver Bullet 10-11),
-# NY lunch macro 12:00-13:00, NY PM 13:30-16:00 (Silver Bullet 14-15).
 MACRO_WINDOWS_UTC = [
     (2, 0, 5, 0),    # London killzone
-    (7, 0, 11, 0),   # NY AM killzone (includes London close + SB 10-11)
+    (7, 0, 11, 0),   # NY AM killzone
     (12, 0, 13, 0),  # NY lunch macro
-    (13, 30, 16, 0),  # NY PM (includes SB 14-15)
-    (19, 0, 20, 0),  # Asian SB (for crypto)
+    (13, 30, 16, 0),  # NY PM
+    (19, 0, 20, 0),  # Asian (crypto)
 ]
 
 

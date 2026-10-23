@@ -89,8 +89,6 @@ def _load_cfg(symbol):
         "partial_trigger_pct": getattr(mod, "PARTIAL_TRIGGER_PCT", 0.80),
         "partial_close_pct": getattr(mod, "PARTIAL_CLOSE_PCT", 0.80),
         "blocked_trends": list(getattr(mod, "BLOCKED_TRENDS", [])),
-        "blocked_sb_hours": list(getattr(mod, "BLOCKED_SB_HOURS", [])),
-        "blocked_amd_hours": list(getattr(mod, "BLOCKED_AMD_HOURS", [])),
         "max_ob_risk_px": getattr(mod, "MAX_OB_RISK_PX", 0.0),
         "use_liquidity_resistance": getattr(mod, "USE_LIQUIDITY_RESISTANCE", True),
         "high_resistance_risk_factor": getattr(mod, "HIGH_RESISTANCE_RISK_FACTOR", 0.25),
@@ -98,7 +96,6 @@ def _load_cfg(symbol):
         "max_daily_loss_pct": getattr(mod, "MAX_DAILY_LOSS_PCT", 4.0),
         "daily_loss_buffer_pct": getattr(mod, "DAILY_LOSS_BUFFER_PCT", 0.5),
         "cooldown_candles": getattr(mod, "COOLDOWN_CANDLES", 3),
-        "use_sweep_filter": getattr(mod, "USE_SWEEP_FILTER", False),
     }
     # Resolve account type
     _ACCOUNT_RISK = {"funded": 0.4, "challenge": 0.6}

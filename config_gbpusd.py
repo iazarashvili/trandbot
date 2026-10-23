@@ -24,6 +24,3 @@ SMT_CORRELATED_SYMBOL = "EURUSD"
 # Trailing stop is not implemented — SymbolConfig does not load these fields.
 # Keeping the measurements here for reference if these features are ever wired.
 
-# Backtest 2026-09-16: SB at 15:xx = 31 trades, 29% WR, -$491.
-# SB at 19:xx = 15 trades, 47% WR, +$787. Block the losing window.
-BLOCKED_SB_HOURS = [15]

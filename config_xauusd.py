@@ -24,9 +24,6 @@ SMT_CORRELATED_SYMBOL = "XAGUSD"
 
 RRR = 1.5
 
-# Sweep filter ON: PF 1.42->1.84, MaxDD 15.1%->6.9%, filters 38 bad trades (2026-08-29)
-USE_SWEEP_FILTER = True
-
 # Breakeven at 2R: 6 trades reached 50%+ TP then reversed, cost $147 (2026-08-29)
 USE_BREAKEVEN = True
 BREAKEVEN_R = 2.0
