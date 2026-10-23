@@ -4,7 +4,7 @@ from config import *  # noqa: F401,F403
 SYMBOL = "GBPUSD"
 LOT_SIZE = 0.01           # fallback if USE_RISK_BASED_LOT=False
 USE_RISK_BASED_LOT = True
-RISK_PERCENT = 0.4        # overridden by ACCOUNT_TYPE if set
+RISK_PERCENT = 1.0        # 1% of balance per trade
 MAGIC_NUMBER = 100202
 STOP_MODE = "ob"
 MAX_RISK_USD = 0.0

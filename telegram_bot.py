@@ -287,6 +287,79 @@ def notify_signal_rejected(symbol: str, direction: str, reason: str):
     send_message(text)
 
 
+def notify_scan_status(statuses: list):
+    """Periodic scan status — one message for all symbols.
+
+    Each entry: {symbol, trend, poi, poi_top, poi_bottom, direction,
+                 dol, position, rejections}
+    """
+    lines = ["📋 <b>SCAN STATUS</b>\n"]
+    for s in statuses:
+        sym = s["symbol"]
+        trend = s.get("trend", "?")
+        trend_emoji = "🟢" if trend == "BULLISH" else "🔴" if trend == "BEARISH" else "⚪"
+
+        line = f"{trend_emoji} <b>{sym}</b> — {trend}\n"
+
+        if s.get("position"):
+            line += f"  📌 Position open\n"
+        elif s.get("poi"):
+            direction = "BUY" if s.get("direction") == "BULLISH" else "SELL"
+            dir_emoji = "🟢" if direction == "BUY" else "🔴"
+            line += (
+                f"  🎯 POI: {s['poi_top']:.5f} — {s['poi_bottom']:.5f}\n"
+                f"  {dir_emoji} Looking for: <b>{direction}</b>\n"
+            )
+            if s.get("dol"):
+                line += f"  🏁 DOL target: {s['dol']:.5f}\n"
+            if s.get("zone_active"):
+                line += f"  👀 Price in zone — waiting for 5m FVG\n"
+        else:
+            line += f"  ⏳ No POI — waiting for 1H FVG+OB\n"
+
+        # Top rejections since last status
+        rej = s.get("rejections", {})
+        if rej:
+            top3 = sorted(rej.items(), key=lambda x: -x[1])[:3]
+            rej_str = ", ".join(f"{k}({v})" for k, v in top3)
+            line += f"  🚫 {rej_str}\n"
+
+        lines.append(line)
+
+    send_message("\n".join(lines))
+
+
+def notify_setup_found(symbol: str, direction: str, entry: float,
+                       sl: float, tp: float, model: str):
+    """A valid setup was found — about to validate risk."""
+    emoji = "🟢" if direction == "BUY" else "🔴"
+    risk_px = abs(entry - sl)
+    reward_px = abs(tp - entry)
+    rrr = round(reward_px / risk_px, 1) if risk_px > 0 else 0
+    text = (
+        f"🔍 <b>SETUP FOUND — {symbol}</b>\n\n"
+        f"{emoji} <b>{direction}</b> ({model})\n"
+        f"Entry: {entry:.5f}\n"
+        f"SL:    {sl:.5f}\n"
+        f"TP:    {tp:.5f}\n"
+        f"RRR:   1:{rrr}\n\n"
+        f"Validating risk..."
+    )
+    send_message(text)
+
+
+def notify_setup_rejected(symbol: str, direction: str, reason: str,
+                          entry: float = 0, sl: float = 0):
+    """A valid setup was found but rejected at execution stage."""
+    emoji = "🟢" if direction == "BUY" else "🔴"
+    text = (
+        f"🚫 <b>SETUP REJECTED — {symbol}</b>\n\n"
+        f"{emoji} {direction} @ {entry:.5f} (SL {sl:.5f})\n"
+        f"Reason: <b>{reason}</b>"
+    )
+    send_message(text)
+
+
 def notify_error(message: str):
     send_message(f"⚠️ <b>ERROR</b>\n\n{message}")
 

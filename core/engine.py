@@ -36,7 +36,9 @@ logger = logging.getLogger("smc_bot")
 RECOVERY_SLEEP = 30
 
 # All symbols the engine can trade.  Add more here.
-DEFAULT_SYMBOLS = ["BTCUSD", "GBPUSD", "EURUSD"]
+# Backtest 2026-10-23: EURUSD PF 0.61, avgR -0.188 — consistently losing.
+# Removed from live trading.  Recoverable from git.
+DEFAULT_SYMBOLS = ["BTCUSD", "GBPUSD"]
 
 # ICT macro time windows (UTC hours).  Only trade during these.
 # London killzone 02:00-05:00, NY AM 08:00-11:00 (Silver Bullet 10-11),
@@ -203,6 +205,7 @@ class MultiSymbolEngine:
                     if now - self._last_status >= 300:
                         self._last_status = now
                         parts = []
+                        tg_statuses = []
                         for sym, ctx in self.contexts.items():
                             s = ctx.state
                             poi_str = f"POI={'Y' if s.poi else 'N'}"
@@ -210,7 +213,31 @@ class MultiSymbolEngine:
                             pos = self.connectors[sym].get_open_positions()
                             pos_str = f"POS={len(pos)}" if pos else "POS=0"
                             parts.append(f"{sym}({trend_str} {poi_str} {pos_str})")
+
+                            # Build Telegram status entry
+                            entry = {
+                                "symbol": sym,
+                                "trend": s.trend,
+                                "poi": s.poi is not None,
+                                "position": bool(pos),
+                                "rejections": dict(s.rejections),
+                            }
+                            if s.poi:
+                                entry["poi_top"] = float(s.poi.top)
+                                entry["poi_bottom"] = float(s.poi.bottom)
+                                entry["direction"] = s.poi.type
+                                entry["zone_active"] = s.watch_key is not None and not s.abandoned
+                            if hasattr(s, '_last_dol') and s._last_dol is not None:
+                                entry["dol"] = s._last_dol
+                            tg_statuses.append(entry)
+                            # Reset rejection counters after reporting
+                            s.rejections = {}
+
                         logger.info("Status: %s", " | ".join(parts))
+
+                        # Send to Telegram every 30 minutes (6th cycle)
+                        if self._cycle % 6 == 1:
+                            telegram_bot.notify_scan_status(tg_statuses)
 
                         # Generate HTF overview charts for each symbol
                         for sym, ctx in self.contexts.items():
@@ -354,6 +381,7 @@ class MultiSymbolEngine:
         if dol_target is None:
             ctx.state.record_rejection("NO_DOL")
             return  # no draw on liquidity = no reason for price to move
+        ctx.state._last_dol = dol_target
 
         # === PLAN RULE 5: LTF EXECUTION — 5m FVG inside POI ===
         # Check zone patience (price must be in/near the POI)
@@ -376,6 +404,14 @@ class MultiSymbolEngine:
         if dol_rr >= ctx.cfg.min_rr_liquidity:
             setup["tp"] = dol_target
         # else keep the fixed RRR tp — DOL too close
+
+        # Notify: a valid setup was found, about to validate
+        logger.info("[%s] SETUP FOUND: %s entry=%.5f sl=%.5f tp=%.5f model=%s",
+                    sym, setup["direction"], setup["entry"], setup["sl"],
+                    setup["tp"], setup.get("model", "PLAN"))
+        telegram_bot.notify_setup_found(
+            sym, setup["direction"], setup["entry"],
+            setup["sl"], setup["tp"], setup.get("model", "PLAN"))
 
         # === PLAN RULE 6: SMT divergence gate ===
         if ctx.cfg.require_smt and ctx.cfg.smt_correlated_symbol:
@@ -505,6 +541,9 @@ class MultiSymbolEngine:
                     ctx.state.record_rejection("HIGH_RESISTANCE_TARGET")
                     logger.info("[%s] %s REJECTED: only high resistance liquidity target.",
                                 sym, strategy_name)
+                    telegram_bot.notify_setup_rejected(
+                        sym, setup["direction"], "HIGH_RESISTANCE_TARGET",
+                        setup.get("entry", 0), setup["sl"])
                     return
                 logger.info("[%s] %s: high resistance target — risk reduced to %.0f%%.",
                             sym, strategy_name, ctx.cfg.high_resistance_risk_factor * 100)
@@ -516,6 +555,9 @@ class MultiSymbolEngine:
                 ctx.state.record_rejection("OB_TOO_WIDE")
                 logger.info("[%s] %s REJECTED: OB risk %.2f > max %.2f",
                             sym, strategy_name, risk_px, ctx.cfg.max_ob_risk_px)
+                telegram_bot.notify_setup_rejected(
+                    sym, setup["direction"], f"OB_TOO_WIDE ({risk_px:.2f} > {ctx.cfg.max_ob_risk_px:.2f})",
+                    setup.get("entry", 0), setup["sl"])
                 return
 
         # Risk validation
@@ -533,9 +575,12 @@ class MultiSymbolEngine:
                     df_ltf, lookback=50, use_closed_candles=USE_CLOSED_CANDLES_ONLY)
                 if not SMCStrategy.is_premium_discount_aligned(pd_zone, setup["direction"]):
                     ctx.state.record_rejection("PREMIUM_DISCOUNT")
+                    zone_name = pd_zone["zone"] if pd_zone else "N/A"
                     logger.info("[%s] %s REJECTED: %s not in correct P/D zone (%s)",
-                                sym, strategy_name, setup["direction"],
-                                pd_zone["zone"] if pd_zone else "N/A")
+                                sym, strategy_name, setup["direction"], zone_name)
+                    telegram_bot.notify_setup_rejected(
+                        sym, setup["direction"], f"PREMIUM_DISCOUNT ({zone_name})",
+                        setup.get("entry", 0), setup["sl"])
                     return
 
         # Guard: if market drifted too far from the strategy's intended entry,
@@ -552,6 +597,10 @@ class MultiSymbolEngine:
                         "intended %.5f (max 20%%)",
                         sym, strategy_name, entry_price,
                         slippage_pct * 100, intended_entry)
+                    telegram_bot.notify_setup_rejected(
+                        sym, setup["direction"],
+                        f"ENTRY_DRIFT ({slippage_pct*100:.0f}% from {intended_entry:.5f})",
+                        entry_price, setup["sl"])
                     return
 
         rejection = validate_entry(ctx, setup["direction"],
@@ -559,12 +608,16 @@ class MultiSymbolEngine:
         if rejection:
             ctx.state.record_rejection(rejection)
             logger.info("[%s] %s REJECTED: %s", sym, strategy_name, rejection)
+            telegram_bot.notify_setup_rejected(
+                sym, setup["direction"], rejection, entry_price, setup["sl"])
             return
 
         # Lot sizing
         lots = calculate_lot_size(ctx, entry_price, setup["sl"])
         if lots is None:
             ctx.state.record_rejection("SIZING_FAILED")
+            telegram_bot.notify_setup_rejected(
+                sym, setup["direction"], "SIZING_FAILED", entry_price, setup["sl"])
             return
 
         # Apply liquidity resistance risk reduction

@@ -18,7 +18,12 @@
       "Bash(env/Scripts/python.exe reports/engine.py --rrr 3.0 --out bt_sig_rrr3.json)",
       "Bash(env/Scripts/python.exe reports/engine.py --invert --rrr 2.5 --out final.json~)",
       "Bash(env/Scripts/python.exe reports/engine.py --ablate --rrr 2.5)",
-      "Bash(env/Scripts/python.exe -m unittest discover -s tests -t .)"
+      "Bash(env/Scripts/python.exe -m unittest discover -s tests -t .)",
+      "Bash(env/Scripts/python.exe -m core.engine)",
+      "Bash(where python:*)",
+      "Read(//c//**)",
+      "Bash(python -m venv env)",
+      "Bash(env/Scripts/python.exe -m pip install -r requirements.txt)"
     ]
   }
 }

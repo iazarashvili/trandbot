@@ -87,7 +87,7 @@ class SymbolConfig:
     blocked_trends: list = field(default_factory=list)     # trend directions to skip ("BEARISH", "BULLISH")
     max_ob_risk_px: float = 0.0                            # max OB stop width in price; 0=disabled
     # Phase 1: risk
-    max_consecutive_losses: int = 3
+    max_consecutive_losses: int = 5
     max_daily_loss_pct: float = 4.0
     daily_loss_buffer_pct: float = 0.5   # stop at 3.5% if limit is 4%
     max_trades_per_day: int = 1
@@ -204,6 +204,9 @@ class SymbolState:
     # Position tracking — used to detect when a position closes (SL/TP/manual)
     last_position_ticket: Optional[int] = None
 
+    # Last DOL target (for Telegram status display)
+    _last_dol: Optional[float] = None
+
     # Rejection stats
     rejections: Dict[str, int] = field(default_factory=dict)
 
@@ -215,6 +218,10 @@ class SymbolState:
             self.daily_reset_date = date_str
             self.trades_today = 0
             self.daily_pnl = 0.0
+            # Reset consecutive losses daily to prevent permanent deadlock:
+            # once the limit is hit, no trade can fire to produce a win,
+            # so the counter would never clear without this reset.
+            self.consecutive_losses = 0
 
     def reset_periodic(self, now):
         """Reset weekly/monthly P&L counters when the period rolls over."""

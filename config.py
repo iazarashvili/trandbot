@@ -75,7 +75,9 @@ LTF_CANDLES_LOOKBACK: int = 100
 # standard error on expectancy is about ±0.35R, so every value in the sweep
 # sits inside one error bar of every other.  2.5 is a reasonable pick, not a
 # measured optimum.  Regenerate the sweep with `reports/engine.py --sweep`.
-RRR: float = 2.0  # Backtest 11mo BTCUSD swing: expR +0.357, PF 1.74, MaxDD 2.82%
+# Backtest 2026-10-23: avg MFE only 1.1R with RRR 2.0 — most trades never
+# reach the TP.  Lowered to 1.5 to capture more winners.
+RRR: float = 1.5
 
 # Stop placement.  Measured on the same data (`reports/engine.py --stops`):
 #   "window"  extreme of the last 10 M1 candles — expR +0.370  <- best
@@ -109,15 +111,19 @@ TREND_EMA_PERIOD: int = 100  # EMA period used to define the macro trend
 
 # News filter: on these weekdays, only trade if high-impact news is scheduled.
 # 0=Monday, 1=Tuesday.  Per trading plan: Mon/Tue without news = no trades.
-TRADE_ONLY_NEWS_DAYS: list = [0, 1]
+# Disabled 2026-10-23: blocked ALL trades for weeks because most weeks have
+# zero importance=3 USD/EUR events.  The macro-window + POI filter is enough.
+TRADE_ONLY_NEWS_DAYS: list = []
 # When True, all trades (any day) must be within 60min of a high-impact event.
-# Plan rule 7: "only trade during high impact news"
-REQUIRE_HIGH_IMPACT_NEWS: bool = True
+# Disabled 2026-10-23: same reason — too restrictive, zero trades opened.
+REQUIRE_HIGH_IMPACT_NEWS: bool = False
 
 # SMT divergence: correlated symbol for divergence checks.
 # Empty = no SMT required.  Set per-symbol in config_<symbol>.py.
 SMT_CORRELATED_SYMBOL: str = ""
-REQUIRE_SMT: bool = True
+# Disabled 2026-10-23: 5m swing divergence is too rare to use as a hard gate.
+# The correlated symbols are kept so SMT can be re-enabled per-symbol later.
+REQUIRE_SMT: bool = False
 
 # Liquidity resistance filter
 USE_LIQUIDITY_RESISTANCE: bool = True
@@ -169,11 +175,11 @@ MIN_RRR_LIQUIDITY: float = 0.5     # minimum R:R to take the trade
 # of entry.  Beyond that the minimum lot takes over and the real risk exceeds
 # RISK_PERCENT; the connector logs a warning when that happens.
 USE_RISK_BASED_LOT: bool = True
-RISK_PERCENT: float = 0.4  # % of balance risked per trade
+RISK_PERCENT: float = 1.0  # 1% of balance risked per trade
 
-# Account type: "funded" = 0.4% risk, "challenge" = 0.6% risk.
-# Overrides RISK_PERCENT when set.
-ACCOUNT_TYPE: str = "funded"  # "funded" | "challenge" | "custom"
+# Account type: "custom" = use RISK_PERCENT directly.
+# "funded" = 0.4%, "challenge" = 0.6%.
+ACCOUNT_TYPE: str = "custom"
 
 # Skip entries while the spread is abnormally wide.  0 disables the filter.
 # Measured on Exness-MT5Trial15 BTCUSD: 700 points (= $7.00) at a quiet moment,
@@ -183,6 +189,11 @@ ACCOUNT_TYPE: str = "funded"  # "funded" | "challenge" | "custom"
 MAX_SPREAD_POINTS: int = 0
 
 # Max 1 trade per day across all symbols (discretionary plan rule).
+# Backtest 2026-10-23: MAX_CONSECUTIVE_LOSSES=3 caused 41,772 rejections on
+# BTCUSD alone — with 51% WR, 3 in a row happens ~12% of the time and blocks
+# the bot for extended periods.  Raised to 5 (probability ~3%).
+MAX_CONSECUTIVE_LOSSES: int = 5
+
 MAX_TRADES_PER_DAY: int = 1
 
 # Weekly/monthly profit caps — stop trading when reached.

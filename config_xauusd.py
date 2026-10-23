@@ -4,10 +4,11 @@ from config import *  # noqa: F401,F403
 SYMBOL = "XAUUSD"
 LOT_SIZE = 0.01           # fallback if USE_RISK_BASED_LOT=False
 USE_RISK_BASED_LOT = True
-RISK_PERCENT = 0.4        # overridden by ACCOUNT_TYPE if set
+RISK_PERCENT = 1.0        # 1% of balance per trade
+ACCOUNT_TYPE = "custom"
 MAGIC_NUMBER = 100201
 STOP_MODE = "ob"
-MAX_RISK_USD = 40.0       # hard cap $40 per trade
+MAX_RISK_USD = 0.0        # disabled — %-based sizing controls risk
 MAX_RISK_PCT = 0.0
 # Backtest 2026-09-16: Asian+London = 13 trades, 31% WR, +$263.
 # NY AM+PM = 23 trades, 13% WR, -$431. Block NY sessions.
@@ -21,7 +22,7 @@ BLOCKED_DAYS = [3, 4]  # 3=Thursday, 4=Friday
 # SMT: compare with silver for divergence confirmation
 SMT_CORRELATED_SYMBOL = "XAGUSD"
 
-RRR = 2.0
+RRR = 1.5
 
 # Sweep filter ON: PF 1.42->1.84, MaxDD 15.1%->6.9%, filters 38 bad trades (2026-08-29)
 USE_SWEEP_FILTER = True

@@ -4,13 +4,14 @@ from config import *  # noqa: F401,F403
 SYMBOL = "BTCUSD"
 LOT_SIZE = 0.01           # fallback if USE_RISK_BASED_LOT=False
 USE_RISK_BASED_LOT = True
-RISK_PERCENT = 0.4        # overridden by ACCOUNT_TYPE if set
+RISK_PERCENT = 1.0        # 1% of balance per trade
 MAGIC_NUMBER = 100200
 STOP_MODE = "swing"  # plan rule 14: SL at swing high/low
 MAX_RISK_USD = 0.0     # disabled — %-based sizing controls risk
 MAX_RISK_PCT = 0.0
-RRR = 2.0  # Backtest 11mo swing: expR +0.357, PF 1.74, MaxDD 2.82%
-NIGHT_START_HOUR = 20
+RRR = 1.5  # Backtest 2026-10-23: MFE 1.1R, RRR 2.0 missed too many TPs
+# Backtest 2026-10-23: 19:00-20:00 = 5t 1W -$28. Extended from 20-23 to 19-23.
+NIGHT_START_HOUR = 19
 NIGHT_END_HOUR = 23
 BLOCKED_DAYS = []
 
