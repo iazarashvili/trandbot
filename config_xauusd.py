@@ -4,7 +4,7 @@ from config import *  # noqa: F401,F403
 SYMBOL = "XAUUSD"
 LOT_SIZE = 0.01           # fallback if USE_RISK_BASED_LOT=False
 USE_RISK_BASED_LOT = True
-RISK_PERCENT = 1.0        # 1% of balance per trade
+RISK_PERCENT = 2.0        # 2% of balance per trade
 ACCOUNT_TYPE = "custom"
 MAGIC_NUMBER = 100201
 STOP_MODE = "ob"

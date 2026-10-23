@@ -175,7 +175,7 @@ MIN_RRR_LIQUIDITY: float = 0.5     # minimum R:R to take the trade
 # of entry.  Beyond that the minimum lot takes over and the real risk exceeds
 # RISK_PERCENT; the connector logs a warning when that happens.
 USE_RISK_BASED_LOT: bool = True
-RISK_PERCENT: float = 1.0  # 1% of balance risked per trade
+RISK_PERCENT: float = 2.0  # 2% of balance risked per trade
 
 # Account type: "custom" = use RISK_PERCENT directly.
 # "funded" = 0.4%, "challenge" = 0.6%.
